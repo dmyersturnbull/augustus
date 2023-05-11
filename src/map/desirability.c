@@ -98,6 +98,9 @@ static void update_buildings(void)
                     value += 2;
                     range = 1;
                 } else {
+                    if (range <= 1) {
+                        range = 1;
+                    }
                     value += 2;
                 }
             }
@@ -160,6 +163,13 @@ static void update_terrain(void)
                     model->desirability_range);
             } else if (terrain & TERRAIN_RUBBLE) {
                 add_to_terrain(x, y, 1, -2, 1, 1, 2);
+            } else if (terrain & TERRAIN_HIGHWAY) {
+                const model_building *model = model_get_building(BUILDING_HIGHWAY);
+                add_to_terrain(x, y, 1,
+                    model->desirability_value,
+                    model->desirability_step,
+                    model->desirability_step_size,
+                    model->desirability_range);
             }
         }
     }

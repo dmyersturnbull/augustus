@@ -7,6 +7,10 @@ set_property(CACHE TARGET_PLATFORM PROPERTY STRINGS default vita switch android 
 string(TOLOWER ${TARGET_PLATFORM} TARGET_PLATFORM)
 
 option(DRAW_FPS "Draw FPS on the top left corner of the window." OFF)
+option(DRAW_ROUTING "Draw routing debug information." OFF)
+option(DRAW_HIGHWAY_TERRAIN "Draw highway debug information." OFF)
+option(DRAW_ROAD_NETWORK_IDS "Draw road network IDs for debugging." OFF)
+option(DRAW_TILE_COORDS "Draw tile coordinates." OFF)
 option(SYSTEM_LIBS "Use system libraries when available." ON)
 option(EMSCRIPTEN_LOAD_SDL_PORTS "Load SDL and SDL_mixer emscripten ports instead of compiling them" OFF)
 option(LINK_MPG123 "Link mpg123 statically to Julius instead of relying on a library." OFF)
@@ -58,11 +62,13 @@ endif()
 
 if (CMAKE_COMPILER_IS_GNUCC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror=implicit-function-declaration")
-
+    if(CMAKE_C_COMPILER_VERSION VERSION_GREATER 5.0)
+        set(CMAKE_C_FLAGS "-Werror=incompatible-pointer-types -Werror=int-conversion -Wstrict-prototypes ${CMAKE_C_FLAGS}")
+    endif()
 endif()
 
 set(PROJECT_VERSION_MAJOR 3)
-set(PROJECT_VERSION_MINOR 1)
+set(PROJECT_VERSION_MINOR 2)
 set(PROJECT_VERSION_PATCH 0)
 set(IS_RELEASE_VERSION FALSE)
 
@@ -147,7 +153,19 @@ if(${TARGET_PLATFORM} STREQUAL "emscripten")
 endif()
 
 if(DRAW_FPS)
-  add_definitions(-DDRAW_FPS)
+    add_definitions(-DDRAW_FPS)
+endif()
+if(DRAW_ROUTING)
+    add_definitions(-DDRAW_ROUTING)
+endif()
+if(DRAW_HIGHWAY_TERRAIN)
+    add_definitions(-DDRAW_HIGHWAY_TERRAIN)
+endif()
+if(DRAW_TILE_COORDS)
+    add_definitions(-DDRAW_TILE_COORDS)
+endif()
+if(DRAW_ROAD_NETWORK_IDS)
+    add_definitions(-DDRAW_ROAD_NETWORK_IDS)
 endif()
 
 set(ASSETS_DIR ${PROJECT_SOURCE_DIR}/res/assets)
@@ -216,6 +234,9 @@ set(PLATFORM_FILES
     ${PROJECT_SOURCE_DIR}/src/platform/virtual_keyboard.c
 )
 
+if("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+    list(APPEND PLATFORM_FILES ${PROJECT_SOURCE_DIR}/src/platform/debug.c)
+endif()
 if (${TARGET_PLATFORM} STREQUAL "vita")
     set(PLATFORM_FILES
         ${PLATFORM_FILES}
@@ -243,6 +264,7 @@ set(CORE_FILES
     ${PROJECT_SOURCE_DIR}/src/core/config.c
     ${PROJECT_SOURCE_DIR}/src/core/dir.c
     ${PROJECT_SOURCE_DIR}/src/core/encoding.c
+    ${PROJECT_SOURCE_DIR}/src/core/encoding_japanese.c
     ${PROJECT_SOURCE_DIR}/src/core/encoding_korean.c
     ${PROJECT_SOURCE_DIR}/src/core/encoding_simp_chinese.c
     ${PROJECT_SOURCE_DIR}/src/core/encoding_trad_chinese.c
@@ -253,13 +275,17 @@ set(CORE_FILES
     ${PROJECT_SOURCE_DIR}/src/core/io.c
     ${PROJECT_SOURCE_DIR}/src/core/lang.c
     ${PROJECT_SOURCE_DIR}/src/core/locale.c
+    ${PROJECT_SOURCE_DIR}/src/core/memory_block.c
     ${PROJECT_SOURCE_DIR}/src/core/png_read.c
     ${PROJECT_SOURCE_DIR}/src/core/random.c
     ${PROJECT_SOURCE_DIR}/src/core/smacker.c
     ${PROJECT_SOURCE_DIR}/src/core/speed.c
     ${PROJECT_SOURCE_DIR}/src/core/string.c
     ${PROJECT_SOURCE_DIR}/src/core/time.c
+    ${PROJECT_SOURCE_DIR}/src/core/xml_parser.c
+    ${PROJECT_SOURCE_DIR}/src/core/xml_exporter.c
     ${PROJECT_SOURCE_DIR}/src/core/zip.c
+    ${PROJECT_SOURCE_DIR}/src/core/zlib_helper.c
 )
 
 set(BUILDING_FILES
@@ -281,6 +307,7 @@ set(BUILDING_FILES
     ${PROJECT_SOURCE_DIR}/src/building/destruction.c
     ${PROJECT_SOURCE_DIR}/src/building/distribution.c
     ${PROJECT_SOURCE_DIR}/src/building/dock.c
+    ${PROJECT_SOURCE_DIR}/src/building/entertainment.c
     ${PROJECT_SOURCE_DIR}/src/building/figure.c
     ${PROJECT_SOURCE_DIR}/src/building/government.c
     ${PROJECT_SOURCE_DIR}/src/building/granary.c
@@ -342,6 +369,7 @@ set(CITY_FILES
 set(EMPIRE_FILES
     ${PROJECT_SOURCE_DIR}/src/empire/city.c
     ${PROJECT_SOURCE_DIR}/src/empire/empire.c
+    ${PROJECT_SOURCE_DIR}/src/empire/xml.c
     ${PROJECT_SOURCE_DIR}/src/empire/object.c
     ${PROJECT_SOURCE_DIR}/src/empire/trade_prices.c
     ${PROJECT_SOURCE_DIR}/src/empire/trade_route.c
@@ -361,10 +389,12 @@ set(FIGURE_FILES
     ${PROJECT_SOURCE_DIR}/src/figure/name.c
     ${PROJECT_SOURCE_DIR}/src/figure/phrase.c
     ${PROJECT_SOURCE_DIR}/src/figure/properties.c
+    ${PROJECT_SOURCE_DIR}/src/figure/roamer_preview.c
     ${PROJECT_SOURCE_DIR}/src/figure/route.c
     ${PROJECT_SOURCE_DIR}/src/figure/service.c
     ${PROJECT_SOURCE_DIR}/src/figure/sound.c
     ${PROJECT_SOURCE_DIR}/src/figure/trader.c
+    ${PROJECT_SOURCE_DIR}/src/figure/visited_buildings.c
 )
 set(FIGURETYPE_FILES
     ${PROJECT_SOURCE_DIR}/src/figuretype/animal.c
@@ -459,6 +489,10 @@ set(ASSETS_FILES
 set(SCENARIO_FILES
     ${PROJECT_SOURCE_DIR}/src/scenario/building.c
     ${PROJECT_SOURCE_DIR}/src/scenario/criteria.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/custom_media.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/custom_messages_export_xml.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/custom_messages_import_xml.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/custom_messages.c
     ${PROJECT_SOURCE_DIR}/src/scenario/demand_change.c
     ${PROJECT_SOURCE_DIR}/src/scenario/distant_battle.c
     ${PROJECT_SOURCE_DIR}/src/scenario/earthquake.c
@@ -470,15 +504,27 @@ set(SCENARIO_FILES
     ${PROJECT_SOURCE_DIR}/src/scenario/gladiator_revolt.c
     ${PROJECT_SOURCE_DIR}/src/scenario/invasion.c
     ${PROJECT_SOURCE_DIR}/src/scenario/map.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/message_media_text_blob.c
     ${PROJECT_SOURCE_DIR}/src/scenario/price_change.c
     ${PROJECT_SOURCE_DIR}/src/scenario/property.c
     ${PROJECT_SOURCE_DIR}/src/scenario/random_event.c
     ${PROJECT_SOURCE_DIR}/src/scenario/request.c
     ${PROJECT_SOURCE_DIR}/src/scenario/scenario.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/scenario_event.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/scenario_events_import_xml.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/scenario_events_export_xml.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/scenario_events_controller.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/scenario_events_parameter_data.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/action_types/action_handler.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/action_types/action_types.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/condition_types/comparison_helper.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/condition_types/condition_handler.c
+    ${PROJECT_SOURCE_DIR}/src/scenario/condition_types/condition_types.c
 )
 set(GRAPHICS_FILES
     ${PROJECT_SOURCE_DIR}/src/graphics/arrow_button.c
     ${PROJECT_SOURCE_DIR}/src/graphics/button.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/clouds.c
     ${PROJECT_SOURCE_DIR}/src/graphics/font.c
     ${PROJECT_SOURCE_DIR}/src/graphics/generic_button.c
     ${PROJECT_SOURCE_DIR}/src/graphics/graphics.c
@@ -510,12 +556,14 @@ set(WIDGET_FILES
     ${PROJECT_SOURCE_DIR}/src/widget/city_bridge.c
     ${PROJECT_SOURCE_DIR}/src/widget/city_building_ghost.c
     ${PROJECT_SOURCE_DIR}/src/widget/city_figure.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_draw_highway.c
     ${PROJECT_SOURCE_DIR}/src/widget/city_overlay_education.c
     ${PROJECT_SOURCE_DIR}/src/widget/city_overlay_entertainment.c
     ${PROJECT_SOURCE_DIR}/src/widget/city_overlay_health.c
     ${PROJECT_SOURCE_DIR}/src/widget/city_overlay_other.c
     ${PROJECT_SOURCE_DIR}/src/widget/city_overlay_risks.c
     ${PROJECT_SOURCE_DIR}/src/widget/city_pause_menu.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_water_ghost.c
     ${PROJECT_SOURCE_DIR}/src/widget/city_with_overlay.c
     ${PROJECT_SOURCE_DIR}/src/widget/city_without_overlay.c
     ${PROJECT_SOURCE_DIR}/src/widget/input_box.c
@@ -523,7 +571,6 @@ set(WIDGET_FILES
     ${PROJECT_SOURCE_DIR}/src/widget/map_editor_tool.c
     ${PROJECT_SOURCE_DIR}/src/widget/map_editor_pause_menu.c
     ${PROJECT_SOURCE_DIR}/src/widget/minimap.c
-    ${PROJECT_SOURCE_DIR}/src/widget/scenario_minimap.c
     ${PROJECT_SOURCE_DIR}/src/widget/top_menu.c
     ${PROJECT_SOURCE_DIR}/src/widget/top_menu_editor.c
     ${PROJECT_SOURCE_DIR}/src/widget/sidebar/city.c
@@ -548,6 +595,7 @@ set(WINDOW_FILES
     ${PROJECT_SOURCE_DIR}/src/window/advisor/ratings.c
     ${PROJECT_SOURCE_DIR}/src/window/advisor/religion.c
     ${PROJECT_SOURCE_DIR}/src/window/advisor/trade.c
+    ${PROJECT_SOURCE_DIR}/src/window/asset_previewer.c
     ${PROJECT_SOURCE_DIR}/src/window/build_menu.c
     ${PROJECT_SOURCE_DIR}/src/window/building_info.c
     ${PROJECT_SOURCE_DIR}/src/window/building/common.c
@@ -563,6 +611,7 @@ set(WINDOW_FILES
     ${PROJECT_SOURCE_DIR}/src/window/editor/allowed_buildings.c
     ${PROJECT_SOURCE_DIR}/src/window/editor/attributes.c
     ${PROJECT_SOURCE_DIR}/src/window/editor/build_menu.c
+    ${PROJECT_SOURCE_DIR}/src/window/editor/custom_messages.c
     ${PROJECT_SOURCE_DIR}/src/window/editor/demand_changes.c
     ${PROJECT_SOURCE_DIR}/src/window/editor/edit_demand_change.c
     ${PROJECT_SOURCE_DIR}/src/window/editor/edit_invasion.c
@@ -573,6 +622,15 @@ set(WINDOW_FILES
     ${PROJECT_SOURCE_DIR}/src/window/editor/map.c
     ${PROJECT_SOURCE_DIR}/src/window/editor/price_changes.c
     ${PROJECT_SOURCE_DIR}/src/window/editor/requests.c
+    ${PROJECT_SOURCE_DIR}/src/window/editor/scenario_events.c
+    ${PROJECT_SOURCE_DIR}/src/window/editor/scenario_event_details.c
+    ${PROJECT_SOURCE_DIR}/src/window/editor/scenario_action_edit.c
+    ${PROJECT_SOURCE_DIR}/src/window/editor/scenario_condition_edit.c
+    ${PROJECT_SOURCE_DIR}/src/window/editor/select_city_by_type.c
+    ${PROJECT_SOURCE_DIR}/src/window/editor/select_city_trade_route.c
+    ${PROJECT_SOURCE_DIR}/src/window/editor/select_scenario_action_type.c
+    ${PROJECT_SOURCE_DIR}/src/window/editor/select_scenario_condition_type.c
+    ${PROJECT_SOURCE_DIR}/src/window/editor/select_special_attribute_mapping.c
     ${PROJECT_SOURCE_DIR}/src/window/editor/special_events.c
     ${PROJECT_SOURCE_DIR}/src/window/editor/start_year.c
     ${PROJECT_SOURCE_DIR}/src/window/editor/starting_conditions.c
@@ -625,6 +683,7 @@ set(TRANSLATION_FILES
     ${PROJECT_SOURCE_DIR}/src/translation/french.c
     ${PROJECT_SOURCE_DIR}/src/translation/german.c
     ${PROJECT_SOURCE_DIR}/src/translation/italian.c
+    ${PROJECT_SOURCE_DIR}/src/translation/japanese.c
     ${PROJECT_SOURCE_DIR}/src/translation/korean.c
     ${PROJECT_SOURCE_DIR}/src/translation/polish.c
     ${PROJECT_SOURCE_DIR}/src/translation/portuguese.c
@@ -733,7 +792,7 @@ endif()
 
 if(${TARGET_PLATFORM} STREQUAL "emscripten")
     set(CMAKE_EXECUTABLE_SUFFIX .html)
-    set_target_properties(${SHORT_NAME} PROPERTIES LINK_FLAGS "-lidbfs.js -s SINGLE_FILE=1 -s DEMANGLE_SUPPORT=1 -s DYNCALLS=1 --shell-file ${PROJECT_SOURCE_DIR}/res/shell.html --embed-file ${ASSETS_DIR}@/assets -s INITIAL_MEMORY=268435456 -s ALLOW_MEMORY_GROWTH=1 -s DISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=0 -s SAFE_HEAP=1 -s INVOKE_RUN=0 -s EXPORTED_FUNCTIONS=[\"_main\",\"__get_tzname\",\"__get_daylight\",\"__get_timezone\"] -s EXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=[\"$autoResumeAudioContext\"] --bind")
+    set_target_properties(${SHORT_NAME} PROPERTIES LINK_FLAGS "-lidbfs.js -s SINGLE_FILE=1 -s DEMANGLE_SUPPORT=1 -s DYNCALLS=1 --shell-file ${PROJECT_SOURCE_DIR}/res/shell.html --embed-file ${ASSETS_DIR}@/assets -s INITIAL_MEMORY=268435456 -s ALLOW_MEMORY_GROWTH=1 -s DISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=0 -s SAFE_HEAP=1 -s INVOKE_RUN=0 -s EXPORTED_FUNCTIONS=[\"_main\"] -s EXPORTED_RUNTIME_METHODS=[\"callMain\",\"FS\"] -s DEFAULT_LIBRARY_FUNCS_TO_INCLUDE=[\"$autoResumeAudioContext\"] --bind")
 endif()
 
 if(MSVC)
@@ -774,7 +833,7 @@ if(APPLE)
 
     set_target_properties(${SHORT_NAME} PROPERTIES
         MACOSX_BUNDLE TRUE
-        MACOSX_BUNDLE_INFO_PLIST "${PROJECT_SOURCE_DIR}/res/Info.plist")
+        MACOSX_BUNDLE_INFO_PLIST "${PROJECT_SOURCE_DIR}/res/macos/Info.plist")
 
     set(DIRS "")
     set(LIBS "")
@@ -800,6 +859,15 @@ if(APPLE)
         include(BundleUtilities)
         fixup_bundle(${CMAKE_BINARY_DIR}/${PROJECT_NAME}.app \"${LIBS}\" \"${DIRS}\")
     " BUNDLE DESTINATION ${CMAKE_BINARY_DIR})
+
+    # perform ad-hoc codesigning
+	set(codesignCommand "codesign --verbose=4 --force --deep --options=runtime --timestamp=none --sign -")
+	set(codesignCommandWithEntitlements "${codesignCommand} --entitlements \"${PROJECT_SOURCE_DIR}/res/macos/Entitlements.plist\"")
+	install(CODE "
+		execute_process(COMMAND
+			${codesignCommandWithEntitlements} \"${CMAKE_BINARY_DIR}/${PROJECT_NAME}.app/Contents/MacOS/${PROJECT_NAME}\"
+		)
+	")
 endif()
 
 if(SDL2_INCLUDE_DIR)
@@ -878,6 +946,7 @@ if(${TARGET_PLATFORM} STREQUAL "vita")
         m
         SceAppUtil_stub
         SceAudio_stub
+        SceAudioIn_stub
         SceCommonDialog_stub
         SceCtrl_stub
         SceDisplay_stub

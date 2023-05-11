@@ -65,9 +65,6 @@ int building_warehouse_add_resource(building *b, int resource)
     if (b->id <= 0) {
         return 0;
     }
-    if (b->has_plague) {
-        return 0;
-    }
     if (building_warehouse_is_not_accepting(resource, building_main(b))) {
         return 0;
     }
@@ -185,9 +182,7 @@ void building_warehouse_space_set_image(building *space, int resource)
     if (space->loads_stored <= 0) {
         image_id = image_group(GROUP_BUILDING_WAREHOUSE_STORAGE_EMPTY);
     } else {
-        image_id = image_group(GROUP_BUILDING_WAREHOUSE_STORAGE_FILLED) +
-            4 * (resource - 1) + resource_image_offset(resource, RESOURCE_IMAGE_STORAGE) +
-            space->loads_stored - 1;
+        image_id = resource_get_data(resource)->image.storage + space->loads_stored - 1;
     }
     map_image_set(space->grid_offset, image_id);
 }
@@ -244,10 +239,11 @@ int building_warehouse_is_accepting(int resource, building *b)
 {
     const building_storage *s = building_storage_get(b->storage_id);
     int amount = building_warehouse_get_amount(b, resource);
-    if ((s->resource_state[resource] == BUILDING_STORAGE_STATE_ACCEPTING) ||
+    if (!b->has_plague &&
+        ((s->resource_state[resource] == BUILDING_STORAGE_STATE_ACCEPTING) ||
         (s->resource_state[resource] == BUILDING_STORAGE_STATE_ACCEPTING_3QUARTERS && amount < THREEQ_WAREHOUSE) ||
         (s->resource_state[resource] == BUILDING_STORAGE_STATE_ACCEPTING_HALF && amount < HALF_WAREHOUSE) ||
-        (s->resource_state[resource] == BUILDING_STORAGE_STATE_ACCEPTING_QUARTER && amount < QUARTER_WAREHOUSE)) {
+        (s->resource_state[resource] == BUILDING_STORAGE_STATE_ACCEPTING_QUARTER && amount < QUARTER_WAREHOUSE))) {
         return 1;
     } else {
         return 0;
@@ -258,10 +254,11 @@ int building_warehouse_is_getting(int resource, building *b)
 {
     const building_storage *s = building_storage_get(b->storage_id);
     int amount = building_warehouse_get_amount(b, resource);
-    if ((s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING) ||
+    if (!b->has_plague && 
+        ((s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING) ||
         (s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING_3QUARTERS && amount < THREEQ_WAREHOUSE) ||
         (s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING_HALF && amount < HALF_WAREHOUSE) ||
-        (s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING_QUARTER && amount < QUARTER_WAREHOUSE)) {
+        (s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING_QUARTER && amount < QUARTER_WAREHOUSE))) {
         return 1;
     } else {
         return 0;
@@ -271,10 +268,11 @@ int building_warehouse_is_getting(int resource, building *b)
 int building_warehouse_is_gettable(int resource, building *b)
 {
     const building_storage *s = building_storage_get(b->storage_id);
-    if ((s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING) ||
+    if (!b->has_plague &&
+        ((s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING) ||
         (s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING_HALF) ||
         (s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING_3QUARTERS) ||
-        (s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING_QUARTER)) {
+        (s->resource_state[resource] == BUILDING_STORAGE_STATE_GETTING_QUARTER))) {
         return 1;
     } else {
         return 0;
@@ -568,7 +566,7 @@ static int determine_granary_accept_foods(int resources[RESOURCE_MAX_FOOD], int 
             continue;
         }
         int pct_workers = calc_percentage(b->num_workers, model_get_building(b->type)->laborers);
-        if (pct_workers >= 100 && b->data.granary.resource_stored[RESOURCE_NONE] >= 100) {
+        if (pct_workers >= 100 && b->resources[RESOURCE_NONE] >= 100) {
             const building_storage *s = building_storage_get(b->storage_id);
             if (!s->empty_all) {
                 for (int r = 0; r < RESOURCE_MAX_FOOD; r++) {
@@ -597,7 +595,7 @@ static int determine_granary_get_foods(int resources[RESOURCE_MAX_FOOD], int roa
             continue;
         }
         int pct_workers = calc_percentage(b->num_workers, model_get_building(b->type)->laborers);
-        if (pct_workers >= 100 && b->data.granary.resource_stored[RESOURCE_NONE] > 100) {
+        if (pct_workers >= 100 && b->resources[RESOURCE_NONE] > 100) {
             const building_storage *s = building_storage_get(b->storage_id);
             if (!s->empty_all) {
                 for (int r = 0; r < RESOURCE_MAX_FOOD; r++) {
@@ -624,13 +622,7 @@ static int contains_non_stockpiled_food(building *space, const int *resources)
     if (city_resource_is_stockpiled(resource)) {
         return 0;
     }
-    if (resource == RESOURCE_WHEAT || resource == RESOURCE_VEGETABLES ||
-        resource == RESOURCE_FRUIT || resource == RESOURCE_MEAT) {
-        if (resources[resource] > 0) {
-            return 1;
-        }
-    }
-    return 0;
+    return resource_is_food(resource) && resources[resource] > 0;
 }
 
 int building_warehouse_determine_worker_task(building *warehouse, int *resource)
@@ -702,15 +694,12 @@ int building_warehouse_determine_worker_task(building *warehouse, int *resource)
     space = warehouse;
     for (int i = 0; i < 8; i++) {
         space = building_next(space);
-        if (space->id > 0 && space->loads_stored > 0) {
-            if (!city_resource_is_stockpiled(space->subtype.warehouse_resource_id)) {
-                int workshop_type = resource_to_workshop_type(space->subtype.warehouse_resource_id);
-                if (workshop_type != WORKSHOP_NONE && city_resource_has_workshop_with_room(workshop_type) &&
-                    building_has_workshop_for_raw_material_with_room(workshop_type, warehouse->road_network_id)) {
-                    *resource = space->subtype.warehouse_resource_id;
-                    return WAREHOUSE_TASK_DELIVERING;
-                }
-            }
+        if (space->id > 0 && space->loads_stored > 0 &&
+            !city_resource_is_stockpiled(space->subtype.warehouse_resource_id) &&
+            building_has_workshop_for_raw_material_with_room(space->subtype.warehouse_resource_id,
+                warehouse->road_network_id)) {
+            *resource = space->subtype.warehouse_resource_id;
+            return WAREHOUSE_TASK_DELIVERING;
         }
     }
     // deliver food to getting granary

@@ -37,14 +37,15 @@ int figure_supplier_create_delivery_boy(int leader_id, int first_figure_id, int 
 
 static int take_food_from_granary(figure *f, int market_id, int granary_id)
 {
-    if (f->collecting_item_id < INVENTORY_MIN_FOOD || f->collecting_item_id >= INVENTORY_MAX_FOOD) {
+    resource_type resource = f->collecting_item_id;
+
+    if (!resource_is_food(resource)) {
         return 0;
     }
-    int resource = resource_from_inventory(f->collecting_item_id);
     building *granary = building_get(granary_id);
-    int market_units = building_get(market_id)->data.market.inventory[f->collecting_item_id];
+    int market_units = building_get(market_id)->resources[resource];
     int max_units = 0;
-    int granary_units = granary->data.granary.resource_stored[resource];
+    int granary_units = granary->resources[resource];
     int num_loads;
     if (building_get(market_id)->data.market.is_mess_hall) {
         max_units = MAX_FOOD_STOCKED_MESS_HALL - market_units;
@@ -120,26 +121,12 @@ static int take_resource_from_generic_building(figure *f, int building_id)
 
 static int take_resource_from_warehouse(figure *f, int warehouse_id, int max_amount)
 {
-    int lighthouse_supplier = f->type == FIGURE_LIGHTHOUSE_SUPPLIER;
-    int resource;
-    if (lighthouse_supplier) {
-        resource = f->collecting_item_id;
-        if (f->collecting_item_id < RESOURCE_MIN_RAW || f->collecting_item_id >= RESOURCE_MAX_RAW) {
-            return 0;
-        }
-    } else {
-        resource = resource_from_inventory(f->collecting_item_id);
-        if (f->collecting_item_id < INVENTORY_MIN_GOOD || f->collecting_item_id >= INVENTORY_MAX_GOOD) {
-            return 0;
-        }
-    }
-
     building *warehouse = building_get(warehouse_id);
     if (warehouse->type != BUILDING_WAREHOUSE) {
         return take_resource_from_generic_building(f, warehouse_id);
     }
     int num_loads;
-    int stored = building_warehouse_get_amount(warehouse, resource);
+    int stored = building_warehouse_get_amount(warehouse, f->collecting_item_id);
     if (stored < max_amount) {
         num_loads = stored;
     } else {
@@ -148,10 +135,10 @@ static int take_resource_from_warehouse(figure *f, int warehouse_id, int max_amo
     if (num_loads <= 0) {
         return 0;
     }
-    building_warehouse_remove_resource(warehouse, resource, num_loads);
+    building_warehouse_remove_resource(warehouse, f->collecting_item_id, num_loads);
 
     // create delivery boys
-    if (!lighthouse_supplier) {
+    if (f->type != FIGURE_LIGHTHOUSE_SUPPLIER) {
         int supplier_id = f->id;
         int boy1 = figure_supplier_create_delivery_boy(supplier_id, supplier_id, FIGURE_DELIVERY_BOY);
         if (num_loads > 1) {
@@ -181,14 +168,14 @@ static int recalculate_market_supplier_destination(figure *f)
 {
     int item = f->collecting_item_id;
     building *market = building_get(f->building_id);
-    inventory_storage_info info[INVENTORY_MAX];
+    resource_storage_info info[RESOURCE_MAX] = { 0 };
 
     int road_network = map_road_network_get(f->grid_offset);
     if (!road_network) {
         return 1;
     }
-    if (!building_distribution_get_inventory_storages(info, BUILDING_MARKET,
-        road_network, f->x, f->y, MAX_DISTANCE)) {
+    if (!building_market_get_needed_inventory(market, info) ||
+        !building_distribution_get_resource_storages_for_figure(info, BUILDING_MARKET, road_network, f, MAX_DISTANCE)) {
         return 0;
     }
 
@@ -198,12 +185,8 @@ static int recalculate_market_supplier_destination(figure *f)
     if (info[item].building_id) {
         return change_market_supplier_destination(f, info[item].building_id);
     }
-    int needed_inventory = building_market_get_needed_inventory(market);
-    if (needed_inventory == INVENTORY_FLAG_NONE) {
-        return 0;
-    }
-    int fetch_inventory = building_market_fetch_inventory(market, info, needed_inventory);
-    if (fetch_inventory == INVENTORY_NONE) {
+    resource_type fetch_inventory = building_market_fetch_inventory(market, info);
+    if (fetch_inventory == RESOURCE_NONE) {
         return 0;
     }
     market->data.market.fetch_inventory_id = fetch_inventory;
@@ -213,8 +196,7 @@ static int recalculate_market_supplier_destination(figure *f)
 
 void figure_supplier_action(figure *f)
 {
-
-    f->terrain_usage = TERRAIN_USAGE_ROADS;
+    f->terrain_usage = TERRAIN_USAGE_ROADS_HIGHWAY;
     f->use_cross_country = 0;
     f->max_roam_length = 800;
 
@@ -236,7 +218,7 @@ void figure_supplier_action(figure *f)
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
                 f->wait_ticks = 0;
                 int id = f->id;
-                if (f->collecting_item_id > 3) {
+                if (!resource_is_food(f->collecting_item_id)) {
                     int max_amount = f->type == FIGURE_LIGHTHOUSE_SUPPLIER ? 1 : 2;
                     if (!take_resource_from_warehouse(f, f->destination_building_id, max_amount)) {
                         f->state = FIGURE_STATE_DEAD;
@@ -259,7 +241,7 @@ void figure_supplier_action(figure *f)
                 f->wait_ticks = 0;
                 if (!recalculate_market_supplier_destination(f)) {
                     f->action_state = FIGURE_ACTION_146_SUPPLIER_RETURNING;
-                    f->collecting_item_id = INVENTORY_NONE;
+                    f->collecting_item_id = RESOURCE_NONE;
                     f->destination_x = f->source_x;
                     f->destination_y = f->source_y;
                     figure_route_remove(f);
@@ -294,10 +276,10 @@ void figure_supplier_action(figure *f)
     } else if (f->type == FIGURE_LIGHTHOUSE_SUPPLIER || f->type == FIGURE_CARAVANSERAI_SUPPLIER) {
         int dir = figure_image_normalize_direction(f->direction < 8 ? f->direction : f->previous_tile_direction);
         if (f->action_state == FIGURE_ACTION_149_CORPSE) {
-            f->image_id = assets_get_image_id("Construction_Guilds", "Slave death 01") +
+            f->image_id = assets_get_image_id("Logistics", "Slave death 01") +
                 figure_image_corpse_offset(f);
         } else {
-            f->image_id = assets_get_image_id("Construction_Guilds", "Slave NE 01") +
+            f->image_id = assets_get_image_id("Logistics", "Slave NE 01") +
                 dir * 12 + f->image_offset;
         }
     } else {
@@ -308,7 +290,7 @@ void figure_supplier_action(figure *f)
 void figure_delivery_boy_action(figure *f)
 {
     f->is_ghost = 0;
-    f->terrain_usage = TERRAIN_USAGE_ROADS;
+    f->terrain_usage = TERRAIN_USAGE_ROADS_HIGHWAY;
     figure_image_increase_offset(f, 12);
     f->cart_image_id = 0;
 
@@ -327,7 +309,7 @@ void figure_delivery_boy_action(figure *f)
                 f->state = FIGURE_STATE_DEAD;
             }
         } else { // leader arrived at market, drop resource at market
-            building_get(f->building_id)->data.market.inventory[f->collecting_item_id] += 100;
+            building_get(f->building_id)->resources[f->collecting_item_id] += 100;
             f->state = FIGURE_STATE_DEAD;
         }
     }
@@ -338,17 +320,17 @@ void figure_delivery_boy_action(figure *f)
 
     if (f->type == FIGURE_MESS_HALL_COLLECTOR) {
         if (f->action_state == FIGURE_ACTION_149_CORPSE) {
-            f->image_id = assets_get_image_id("Military_Buildings", "M Hall death 01") +
+            f->image_id = assets_get_image_id("Military", "M Hall death 01") +
                 figure_image_corpse_offset(f);
         } else {
-            f->image_id = assets_get_image_id("Military_Buildings", "M Hall NE 01") +
+            f->image_id = assets_get_image_id("Military", "M Hall NE 01") +
                 dir * 12 + f->image_offset;
         }
     } else if (f->type == FIGURE_CARAVANSERAI_COLLECTOR) {
         if (f->action_state == FIGURE_ACTION_149_CORPSE) {
-            f->image_id = assets_get_image_id("Construction_Guilds", "Slave death 01") + figure_image_corpse_offset(f);
+            f->image_id = assets_get_image_id("Logistics", "Slave death 01") + figure_image_corpse_offset(f);
         } else {
-            f->image_id = assets_get_image_id("Construction_Guilds", "Slave NE 01")
+            f->image_id = assets_get_image_id("Logistics", "Slave NE 01")
                 + dir * 12 + f->image_offset;
         }
     } else {
@@ -365,7 +347,7 @@ void figure_delivery_boy_action(figure *f)
 void figure_fort_supplier_action(figure *f)
 {
     f->is_ghost = 0;
-    f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
+    f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
     figure_image_increase_offset(f, 12);
 
     building *b = building_get(f->building_id);
@@ -409,10 +391,10 @@ void figure_fort_supplier_action(figure *f)
 
     int dir = figure_image_normalize_direction(f->direction < 8 ? f->direction : f->previous_tile_direction);
     if (f->action_state == FIGURE_ACTION_149_CORPSE) {
-        f->image_id = assets_get_image_id("Military_Buildings", "M Hall death 01") +
+        f->image_id = assets_get_image_id("Military", "M Hall death 01") +
             figure_image_corpse_offset(f);
     } else {
-        f->image_id = assets_get_image_id("Military_Buildings", "M Hall NE 01") +
+        f->image_id = assets_get_image_id("Military", "M Hall NE 01") +
             dir * 12 + f->image_offset;
     }
 }

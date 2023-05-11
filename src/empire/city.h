@@ -2,11 +2,14 @@
 #define EMPIRE_CITY_H
 
 #include "core/buffer.h"
+#include "empire/type.h"
 #include "game/resource.h"
+
+#define EMPIRE_CITY_MAX_TRADERS 3
 
 typedef struct {
     int in_use;
-    int type;
+    empire_city_type type;
     int name_id;
     int route_id;
     int is_open;
@@ -16,14 +19,18 @@ typedef struct {
     int trader_entry_delay;
     int empire_object_id;
     int is_sea_trade;
-    int trader_figure_ids[3];
+    int trader_figure_ids[EMPIRE_CITY_MAX_TRADERS];
 } empire_city;
 
 void empire_city_clear_all(void);
 
 empire_city *empire_city_get(int city_id);
 
+empire_city *empire_city_get_new(void);
+
 int empire_city_get_route_id(int city_id);
+
+int empire_city_get_id_by_name(const uint8_t *city_name);
 
 int empire_can_import_resource(int resource);
 
@@ -69,8 +76,18 @@ void empire_city_remove_trader(int city_id, int figure_id);
 
 int empire_unlock_all_resources(void);
 
+int empire_city_change_own_resource_availability(resource_type resource, int is_available);
+
+const uint8_t *empire_city_get_name(const empire_city *city);
+
 void empire_city_save_state(buffer *buf);
 
-void empire_city_load_state(buffer *buf);
+int empire_city_can_mine_gold(int city_name_id);
+
+void empire_city_update_gold_trading(void);
+
+void empire_city_load_state(buffer *buf, int version);
+
+int empire_city_get_array_size(void);
 
 #endif // EMPIRE_CITY_H

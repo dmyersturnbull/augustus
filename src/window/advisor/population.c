@@ -1,5 +1,6 @@
 #include "population.h"
 
+#include "building/count.h"
 #include "core/config.h"
 #include "core/lang.h"
 #include "core/locale.h"
@@ -260,21 +261,31 @@ static void draw_society_graph(int full_size, int x, int y)
     }
 }
 
+static int calculate_total_housing_buildings(void)
+{
+    int total_houses = 0;
+    for (building_type house = BUILDING_HOUSE_SMALL_TENT; house <= BUILDING_HOUSE_LUXURY_PALACE; house++) {
+        total_houses += building_count_active(house);
+    }
+    return total_houses;
+}
+
 static void print_society_info(void)
 {
     int width;
     int avg_tax_per_house = 0;
-    if (calculate_total_housing_buildings() > 0) {
-        avg_tax_per_house = city_finance_estimated_tax_income() / calculate_total_housing_buildings();
+    int total_houses = calculate_total_housing_buildings();
+    if (total_houses) {
+        avg_tax_per_house = city_finance_estimated_tax_income() / total_houses;
     }
 
     // Percent patricians
     width = text_draw(translation_for(TR_ADVISOR_PERCENTAGE_IN_VILLAS_PALACES), 75, 342, FONT_NORMAL_WHITE, 0);
-    text_draw_percentage(percentage_city_population_in_villas_palaces(), 75 + width, 342, FONT_NORMAL_WHITE);
+    text_draw_percentage(city_population_percentage_in_villas_palaces(), 75 + width, 342, FONT_NORMAL_WHITE);
 
     // Percent impoverished
     width = text_draw(translation_for(TR_ADVISOR_PERCENTAGE_IN_TENTS_SHACKS), 75, 360, FONT_NORMAL_WHITE, 0);
-    text_draw_percentage(percentage_city_population_in_tents_shacks(), 75 + width, 360, FONT_NORMAL_WHITE);
+    text_draw_percentage(city_population_percentage_in_tents_shacks(), 75 + width, 360, FONT_NORMAL_WHITE);
 
     // Average tax
     width = text_draw(translation_for(TR_ADVISOR_AVERAGE_TAX), 75, 378, FONT_NORMAL_WHITE, 0);
@@ -388,7 +399,7 @@ static int draw_background(void)
     void (*big_graph)(int, int, int);
     void (*top_graph)(int, int, int);
     void (*bot_graph)(int, int, int);
-    void (*info_panel)();
+    void (*info_panel)(void);
 
     switch (graph_order) {
         default:
@@ -487,7 +498,7 @@ static void draw_foreground(void)
 
 static int handle_mouse(const mouse *m)
 {
-    return generic_buttons_handle_mouse(m, 0, 0, graph_buttons, 3, &focus_button_id);
+    return generic_buttons_handle_mouse(m, 0, 0, graph_buttons, 2, &focus_button_id);
 }
 
 static void button_graph(int param1, int param2)

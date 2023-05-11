@@ -221,10 +221,6 @@ static void spawn_figure_tower(building *b)
             f->building_id = b->id;
             f->action_state = FIGURE_ACTION_180_BALLISTA_CREATED;
         }
-        has_figure_of_type(b, FIGURE_TOWER_SENTRY);
-        if (b->figure_id <= 0) {
-            building_barracks_request_tower_sentry();
-        }
     }
 }
 
@@ -775,11 +771,11 @@ static void spawn_figure_market(building *b)
 
 static void spawn_caravanserai_supplier(building *b, int x, int y)
 {
-    if (b->figure_id2) {
-        figure *f = figure_get(b->figure_id2);
+    if (b->figure_id) {
+        figure *f = figure_get(b->figure_id);
         if (f->state != FIGURE_STATE_ALIVE ||
             (f->type != FIGURE_CARAVANSERAI_SUPPLIER && f->type != FIGURE_LABOR_SEEKER)) {
-            b->figure_id2 = 0;
+            b->figure_id = 0;
         }
         return;
     }
@@ -789,18 +785,18 @@ static void spawn_caravanserai_supplier(building *b, int x, int y)
     }
     figure *f = figure_create(FIGURE_CARAVANSERAI_SUPPLIER, x, y, DIR_0_TOP);
     f->building_id = b->id;
-    b->figure_id2 = f->id;
+    b->figure_id = f->id;
     f->collecting_item_id = b->data.market.fetch_inventory_id;
     send_supplier_to_destination(f, dst_building_id);
 }
 
 static void spawn_lighthouse_supplier(building *b, int x, int y)
 {
-    if (b->figure_id2) {
-        figure *f = figure_get(b->figure_id2);
+    if (b->figure_id) {
+        figure *f = figure_get(b->figure_id);
         if (f->state != FIGURE_STATE_ALIVE ||
             (f->type != FIGURE_LIGHTHOUSE_SUPPLIER && f->type != FIGURE_LABOR_SEEKER)) {
-            b->figure_id2 = 0;
+            b->figure_id = 0;
         }
         return;
     }
@@ -810,7 +806,7 @@ static void spawn_lighthouse_supplier(building *b, int x, int y)
     }
     figure *f = figure_create(FIGURE_LIGHTHOUSE_SUPPLIER, x, y, DIR_0_TOP);
     f->building_id = b->id;
-    b->figure_id2 = f->id;
+    b->figure_id = f->id;
     f->collecting_item_id = RESOURCE_TIMBER; // Raw Resource
     send_supplier_to_destination(f, dst_building_id);
 }
@@ -932,6 +928,15 @@ static void spawn_figure_library(building *b)
     }
 }
 
+static void set_academy_graphic(building *b)
+{
+    if (b->state != BUILDING_STATE_IN_USE) {
+        return;
+    }
+    b->upgrade_level = b->desirability >= 60;
+    map_building_tiles_add(b->id, b->x, b->y, b->size, building_image_get(b), TERRAIN_BUILDING);
+}
+
 static void spawn_figure_academy(building *b)
 {
     check_labor_problem(b);
@@ -940,6 +945,7 @@ static void spawn_figure_academy(building *b)
     }
     map_point road;
     if (map_has_road_access(b->x, b->y, b->size, &road)) {
+        set_academy_graphic(b);
         spawn_labor_seeker(b, road.x, road.y, 50);
         int spawn_delay = default_spawn_delay(b);
         if (!spawn_delay) {
@@ -1090,9 +1096,11 @@ static void spawn_figure_tavern(building *b)
         b->figure_spawn_delay++;
         if (b->figure_spawn_delay > spawn_delay) {
             b->figure_spawn_delay = 0;
-            if (!has_figure_of_type(b, FIGURE_BARKEEP) && b->data.market.inventory[INVENTORY_WINE] > 21) {
-                b->data.market.inventory[INVENTORY_WINE] -= 20;
-                b->data.market.inventory[INVENTORY_MEAT] -= calc_bound(40, 40, b->data.market.inventory[INVENTORY_MEAT]);
+            if (!has_figure_of_type(b, FIGURE_BARKEEP) && b->resources[RESOURCE_WINE] >= 20) {
+                b->resources[RESOURCE_WINE] -= 20;
+                int resource_decay = b->resources[RESOURCE_MEAT] && b->resources[RESOURCE_FISH] ? 20 : 40;
+                b->resources[RESOURCE_MEAT] -= calc_bound(resource_decay, resource_decay, b->resources[RESOURCE_MEAT]);
+                b->resources[RESOURCE_FISH] -= calc_bound(resource_decay, resource_decay, b->resources[RESOURCE_FISH]);
                 create_roaming_figure(b, road.x, road.y, FIGURE_BARKEEP);
             }
         }
@@ -1238,7 +1246,6 @@ static void spawn_figure_mission_post(building *b)
     map_point road;
     if (map_has_road_access(b->x, b->y, b->size, &road)) {
         if (city_population() > 0) {
-            city_buildings_set_mission_post_operational();
             b->figure_spawn_delay++;
             if (b->figure_spawn_delay > 1) {
                 b->figure_spawn_delay = 0;
@@ -1287,10 +1294,9 @@ static void spawn_figure_wharf(building *b)
         if (b->figure_spawn_delay) {
             b->figure_spawn_delay = 0;
             b->data.industry.has_fish = 0;
-            b->output_resource_id = RESOURCE_MEAT;
             figure *f = figure_create(FIGURE_CART_PUSHER, road.x, road.y, DIR_4_BOTTOM);
             f->action_state = FIGURE_ACTION_20_CARTPUSHER_INITIAL;
-            f->resource_id = RESOURCE_MEAT;
+            f->resource_id = RESOURCE_FISH;
             f->building_id = b->id;
             b->figure_id = f->id;
             f->wait_ticks = 30;
@@ -1541,8 +1547,8 @@ static void spawn_figure_fort_supplier(building *fort)
     
     int total_food_in_mess_hall = 0;
 
-    for (int i = INVENTORY_MIN_FOOD; i < INVENTORY_MAX_FOOD; ++i) {
-        total_food_in_mess_hall += supply_post->data.market.inventory[i];
+    for (resource_type r = RESOURCE_MIN_FOOD; r < RESOURCE_MAX_FOOD; r++) {
+        total_food_in_mess_hall += supply_post->resources[r];
     }
 
     if (!total_food_in_mess_hall) {
@@ -1655,7 +1661,6 @@ static void spawn_figure_watchtower(building *b)
         int spawn_delay;
 
         if (!b->figure_id4) { // Don't spawn watchmen until they get sentry from the barracks
-            building_barracks_request_tower_sentry();
             return;
         }
 
@@ -1704,14 +1709,14 @@ static void update_native_crop_progress(building *b)
 void building_figure_generate(void)
 {
     int patrician_generated = 0;
-    building_barracks_decay_tower_sentry_request();
     for (int i = 1; i < building_count(); i++) {
         building *b = building_get(i);
         if (b->state != BUILDING_STATE_IN_USE) {
             b->show_on_problem_overlay = 1;
             continue;
         }
-        if (b->type == BUILDING_WAREHOUSE_SPACE || (b->type == BUILDING_HIPPODROME && b->prev_part_building_id)) {
+        if (b->type == BUILDING_WAREHOUSE_SPACE || (b->type == BUILDING_HIPPODROME && b->prev_part_building_id) ||
+            building_monument_is_unfinished_monument(b)) {
             continue;
         }
 
@@ -1719,7 +1724,8 @@ void building_figure_generate(void)
         // range of building types
         if (b->type >= BUILDING_HOUSE_SMALL_VILLA && b->type <= BUILDING_HOUSE_LUXURY_PALACE) {
             patrician_generated = spawn_patrician(b, patrician_generated);
-        } else if (b->type >= BUILDING_WHEAT_FARM && b->type <= BUILDING_POTTERY_WORKSHOP) {
+        } else if (building_is_raw_resource_producer(b->type) ||
+            building_is_farm(b->type) || building_is_workshop(b->type)) {
             spawn_figure_industry(b);
         } else if (b->type >= BUILDING_SENATE && b->type <= BUILDING_FORUM_UPGRADED) {
             spawn_figure_senate_forum(b);
@@ -1764,14 +1770,10 @@ void building_figure_generate(void)
                     spawn_figure_theater(b);
                     break;
                 case BUILDING_HIPPODROME:
-                    if (b->data.monument.phase == MONUMENT_FINISHED) {
-                        spawn_figure_hippodrome(b);
-                    }
+                    spawn_figure_hippodrome(b);
                     break;
                 case BUILDING_COLOSSEUM:
-                    if (b->data.monument.phase == MONUMENT_FINISHED) {
-                        spawn_figure_colosseum(b);
-                    }
+                    spawn_figure_colosseum(b);
                     break;
                 case BUILDING_ARENA:
                     spawn_figure_colosseum(b);
@@ -1841,23 +1843,17 @@ void building_figure_generate(void)
                     spawn_figure_mess_hall(b);
                     break;
                 case BUILDING_GRAND_TEMPLE_MARS:
-                    if (b->data.monument.phase == MONUMENT_FINISHED) {
-                        spawn_figure_grand_temple_mars(b);
-                    }
+                    spawn_figure_grand_temple_mars(b);
                     break;
                 case BUILDING_GRAND_TEMPLE_CERES:
                 case BUILDING_GRAND_TEMPLE_NEPTUNE:
                 case BUILDING_GRAND_TEMPLE_MERCURY:
                 case BUILDING_GRAND_TEMPLE_VENUS:
                 case BUILDING_PANTHEON:
-                    if (b->data.monument.phase == MONUMENT_FINISHED) {
-                        spawn_figure_temple(b);
-                    }
+                    spawn_figure_temple(b);
                     break;
                 case BUILDING_LIGHTHOUSE:
-                    if (b->data.monument.phase == MONUMENT_FINISHED) {
-                        spawn_figure_lighthouse(b);
-                    }
+                    spawn_figure_lighthouse(b);
                     break;
                 case BUILDING_TAVERN:
                     spawn_figure_tavern(b);
@@ -1866,9 +1862,7 @@ void building_figure_generate(void)
                     spawn_figure_watchtower(b);
                     break;
                 case BUILDING_CARAVANSERAI:
-                    if (b->data.monument.phase == MONUMENT_FINISHED) {
-                        spawn_figure_caravanserai(b);
-                    }
+                    spawn_figure_caravanserai(b);
                     break;
             }
         }

@@ -66,7 +66,6 @@ static translation_string all_strings[] = {
     {TR_CONFIG_FIX_IMMIGRATION_BUG, "Corregir bug impidiendo inmigración en Muy Difícil"},
     {TR_CONFIG_FIX_100_YEAR_GHOSTS, "Corregir bug creando fantasmas con 100 años"},
     {TR_CONFIG_FIX_EDITOR_EVENTS, "Corregir cambio de Emperador y tiempo de supervivencia en misiones del editor"},
-    {TR_CONFIG_DRAW_WALKER_WAYPOINTS, "Ver controles de ruta en Capas al hacer clic derecho en un edificio"},
     {TR_CONFIG_COMPLETE_RATING_COLUMNS, "Arreglar columnas de puntuación incompletas con objetivos bajos"},
     {TR_CONFIG_GRANDFESTIVAL, "Super-Festivales permiten bendiciones extras de un dios"},
     {TR_CONFIG_DIFFICULTY, "Dificultad:"},
@@ -206,10 +205,10 @@ static translation_string all_strings[] = {
     {TR_HEADER_HOUSING, "Vivienda"},
     {TR_ADVISOR_HOUSING_ROOM, "En la ciudad hay habitaciones para"},
     {TR_ADVISOR_HOUSING_NO_ROOM, "No hay habitaciones disponibles en la ciudad."},
-    {TR_ADVISOR_RESIDENCES_DEMANDING_POTTERY, "Residencias demandando cerámica"},
-    {TR_ADVISOR_RESIDENCES_DEMANDING_FURNITURE, "Residencias demandando muebles"},
-    {TR_ADVISOR_RESIDENCES_DEMANDING_OIL, "Residencias demandando aceite"},
-    {TR_ADVISOR_RESIDENCES_DEMANDING_WINE, "Residencias demandando vino"},
+    {TR_ADVISOR_RESIDENCES_USING_POTTERY, "Residencias demandando cerámica"},
+    {TR_ADVISOR_RESIDENCES_USING_FURNITURE, "Residencias demandando muebles"},
+    {TR_ADVISOR_RESIDENCES_USING_OIL, "Residencias demandando aceite"},
+    {TR_ADVISOR_RESIDENCES_USING_WINE, "Residencias demandando vino"},
     {TR_ADVISOR_TOTAL_NUM_HOUSES, "Residencias totales:"},
     {TR_ADVISOR_AVAILABLE_HOUSING_CAPACITY, "Capacidad disponible:"},
     {TR_ADVISOR_TOTAL_HOUSING_CAPACITY, "Capacidad total:"},
@@ -647,6 +646,7 @@ static translation_string all_strings[] = {
     {TR_FIGURE_TYPE_LOOTER, "Saqueador" },
     {TR_FIGURE_TYPE_ROBBER, "Ladrón" },
     {TR_OVERLAY_SENTIMENT, "Humor" },
+    {TR_OVERLAY_EFFICIENCY, "Eficiencia" },
     {TR_WINDOW_ADVISOR_ENTERTAINMENT_NO_COVERAGE, "Nadie" },
     {TR_WINDOW_ADVISOR_ENTERTAINMENT_FULL_COVERAGE, "Todos" },
     {TR_TOOLTIP_ADVISOR_TRADE_LAND_POLICY, "Selecciona una política de comercio terrestre"},
@@ -708,6 +708,7 @@ static translation_string all_strings[] = {
     {TR_TOOLTIP_BUTTON_STOCKPILING_ON, "Habilitar el almacenamiento en un almacén" },
     {TR_TOOLTIP_BUTTON_STOCKPILING_OFF, "Detener reserva" },
     {TR_CONFIG_DIGIT_SEPARATOR, "Separate digits"},
+    {TR_WARNING_SCREENSHOT_SAVED, "Captura de pantalla guardada: "} // TODO: Google translate
 };
 
 void translation_spanish(const translation_string **strings, int *num_strings)

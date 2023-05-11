@@ -1,5 +1,7 @@
 #include "top_menu_editor.h"
 
+#include "empire/empire.h"
+#include "empire/object.h"
 #include "game/file_editor.h"
 #include "game/game.h"
 #include "game/system.h"
@@ -7,11 +9,14 @@
 #include "graphics/menu.h"
 #include "graphics/screen.h"
 #include "graphics/window.h"
+#include "scenario/editor.h"
 #include "scenario/editor_map.h"
+#include "scenario/empire.h"
 #include "scenario/scenario.h"
 #include "translation/translation.h"
 #include "window/config.h"
 #include "window/file_dialog.h"
+#include "window/hotkey_config.h"
 #include "window/message_dialog.h"
 #include "window/popup_dialog.h"
 #include "window/select_list.h"
@@ -25,6 +30,8 @@ static void menu_file_exit_to_menu(int param);
 static void menu_file_exit_game(int param);
 
 static void menu_options_general(int param);
+static void menu_options_user_interface(int param);
+static void menu_options_hotkeys(int param);
 
 static void menu_help_help(int param);
 static void menu_help_about(int param);
@@ -34,6 +41,7 @@ static void menu_resets_fish(int param);
 static void menu_resets_invasions(int param);
 
 static void menu_empire_choose(int param);
+static void menu_empire_custom(int param);
 
 static menu_item menu_file[] = {
     {7, 1, menu_file_new_map, 0},
@@ -45,6 +53,8 @@ static menu_item menu_file[] = {
 
 static menu_item menu_options[] = {
     {CUSTOM_TRANSLATION, TR_CONFIG_HEADER_GENERAL, menu_options_general, 0},
+    {CUSTOM_TRANSLATION, TR_CONFIG_HEADER_UI_CHANGES, menu_options_user_interface, 0},
+    {CUSTOM_TRANSLATION, TR_BUTTON_CONFIGURE_HOTKEYS, menu_options_hotkeys, 0}
 };
 
 static menu_item menu_help[] = {
@@ -60,14 +70,15 @@ static menu_item menu_resets[] = {
 
 static menu_item menu_empire[] = {
     {149, 1, menu_empire_choose, 0},
+    {CUSTOM_TRANSLATION, TR_EDITOR_CHOOSE_CUSTOM_EMPIRE, menu_empire_custom, 0},
 };
 
 static menu_bar_item menu[] = {
     {7, menu_file, 5},
-    {2, menu_options, 1},
+    {2, menu_options, 3},
     {3, menu_help, 2},
     {10, menu_resets, 3},
-    {149, menu_empire, 1},
+    {149, menu_empire, 2},
 };
 
 #define INDEX_OPTIONS 1
@@ -83,11 +94,6 @@ static void clear_state(void)
     data.open_sub_menu = 0;
     data.focus_menu_id = 0;
     data.focus_sub_menu_id = 0;
-}
-
-static void init(void)
-{
-    menu[INDEX_OPTIONS].items[0].hidden = system_is_fullscreen_only();
 }
 
 static void draw_foreground(void)
@@ -111,7 +117,6 @@ static void top_menu_window_show(void)
         draw_foreground,
         handle_input
     };
-    init();
     window_show(&window);
 }
 
@@ -246,6 +251,20 @@ static void menu_options_general(int param)
     window_config_show(CONFIG_PAGE_GENERAL, 0);
 }
 
+static void menu_options_user_interface(int param)
+{
+    clear_state();
+    window_go_back();
+    window_config_show(CONFIG_PAGE_UI_CHANGES, 0);
+}
+
+static void menu_options_hotkeys(int param)
+{
+    clear_state();
+    window_go_back();
+    window_hotkey_config_show();
+}
+
 static void menu_help_help(int param)
 {
     clear_state();
@@ -285,5 +304,15 @@ static void menu_empire_choose(int param)
 {
     clear_state();
     window_go_back();
+    scenario_editor_unset_custom_empire();
+    empire_load(1, scenario_empire_id());
+    empire_object_init_cities(scenario_empire_id());
     window_editor_empire_show();
+}
+
+static void menu_empire_custom(int param)
+{
+    clear_state();
+    window_go_back();
+    window_file_dialog_show(FILE_TYPE_EMPIRE, FILE_DIALOG_LOAD);
 }

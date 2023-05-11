@@ -12,6 +12,8 @@
 #include "game/difficulty.h"
 #include "game/time.h"
 #include "figuretype/entertainer.h"
+#include "map/data.h"
+#include "map/terrain.h"
 
 #define MAX_HOUSE_LEVELS 20
 
@@ -42,7 +44,7 @@ static building_levy_for_type building_levies[] = {
     {BUILDING_SMALL_MAUSOLEUM, SMALL_MAUSOLEUM_LEVY_MONTHLY},
     {BUILDING_LARGE_MAUSOLEUM, SMALL_MAUSOLEUM_LEVY_MONTHLY},
     {BUILDING_NYMPHAEUM, SMALL_TEMPLE_LEVY_MONTHLY},
-    {BUILDING_CARAVANSERAI, CARAVANSERAI_LEVY_MONTHLY }
+    {BUILDING_CARAVANSERAI, CARAVANSERAI_LEVY_MONTHLY },
 };
 
 static tourism_for_type tourism_modifiers[] = {
@@ -70,10 +72,10 @@ void city_finance_treasury_add(int amount)
     city_data.finance.treasury += amount;
 }
 
-void city_finance_treasury_add_tourism(int amount)
+void city_finance_treasury_add_miscellaneous(int amount)
 {
     city_finance_treasury_add(amount);
-    city_data.finance.tourism_this_year += amount;
+    city_data.finance.misc_this_year += amount;
 }
 
 
@@ -346,6 +348,15 @@ static void pay_monthly_building_levies(void)
         }
     }
 
+    int grid_offset = map_data.start_offset;
+    for (int y = 0; y < map_data.height; y++, grid_offset += map_data.border_size) {
+        for (int x = 0; x < map_data.width; x++, grid_offset++) {
+            if (map_terrain_is(grid_offset, TERRAIN_HIGHWAY_TOP_LEFT)) {
+                levies += HIGHWAY_LEVY_MONTHLY;
+            }
+        }
+    }
+
     city_data.finance.treasury -= levies;
     city_data.finance.this_year.expenses.levies += levies;
 }
@@ -448,8 +459,8 @@ static void copy_amounts_to_last_year(void)
     this_year->income.donated = 0;
 
     //tourism 
-    city_data.finance.tourism_last_year = city_data.finance.tourism_this_year;
-    city_data.finance.tourism_this_year = 0;
+    city_data.finance.misc_last_year = city_data.finance.misc_this_year;
+    city_data.finance.misc_this_year = 0;
 }
 
 static void pay_tribute(void)

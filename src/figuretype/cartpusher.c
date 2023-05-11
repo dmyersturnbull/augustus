@@ -21,14 +21,23 @@
 #include "map/routing_terrain.h"
 #include "map/terrain.h"
 
-static const int CART_OFFSET_MULTIPLE_LOADS_FOOD[] = {0, 0, 8, 16, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-static const int CART_OFFSET_MULTIPLE_LOADS_NON_FOOD[] = {0, 0, 0, 0, 0, 8, 0, 16, 24, 32, 40, 48, 56, 64, 72, 80};
-static const int CART_OFFSET_8_LOADS_FOOD[] = {0, 40, 48, 56, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-static void set_cart_graphic(figure *f)
+static int cartpusher_carries_food(figure *f)
 {
-    f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART) +
-        8 * f->resource_id + resource_image_offset(f->resource_id, RESOURCE_IMAGE_CART);
+    return resource_is_food(f->resource_id);
+}
+
+static void set_cart_graphic(figure *f, int always_carries_resource)
+{
+    int carried = f->loads_sold_or_carrying == 0 ? always_carries_resource : f->loads_sold_or_carrying;
+    if (carried == 0 || f->resource_id == RESOURCE_NONE) {
+        f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART);
+    } else if (carried == 1) {
+        f->cart_image_id = resource_get_data(f->resource_id)->image.cart.single_load;
+    } else if (cartpusher_carries_food(f) && carried >= 8) {
+        f->cart_image_id = resource_get_data(f->resource_id)->image.cart.eight_loads;        
+    } else {
+        f->cart_image_id = resource_get_data(f->resource_id)->image.cart.multiple_loads;
+    }
 }
 
 static int should_change_destination(const figure *f, int building_id, int x_dst, int y_dst)
@@ -172,7 +181,6 @@ static void determine_cartpusher_destination(figure *f, building *b, int road_ne
         return;
     }
     // priority 5: granary forced when on stockpile
-
     dst_building_id = building_granary_for_storing(f->x, f->y,
         b->output_resource_id, road_network_id, 1, &understaffed_storages, &dst);
     if (config_get(CONFIG_GP_CH_FARMS_DELIVER_CLOSE)) {
@@ -235,15 +243,6 @@ static void determine_cartpusher_destination_food(figure *f, int road_network_id
     f->wait_ticks = 0;
 }
 
-static int cartpusher_carries_food(figure *f)
-{
-    if (f->resource_id == RESOURCE_WHEAT || f->resource_id == RESOURCE_VEGETABLES ||
-        f->resource_id == RESOURCE_FRUIT || f->resource_id == RESOURCE_MEAT) {
-        return 1;
-    }
-    return 0;
-}
-
 static void update_image(figure *f)
 {
     int dir = figure_image_normalize_direction(
@@ -291,12 +290,13 @@ void figure_cartpusher_action(figure *f)
     f->cart_image_id = 0;
     int percentage_speed = cartpusher_percentage_speed(f);
     int road_network_id = map_road_network_get(f->grid_offset);
-    f->terrain_usage = TERRAIN_USAGE_ROADS;
+    f->terrain_usage = TERRAIN_USAGE_ROADS_HIGHWAY;
     building *b = building_get(f->building_id);
 
-    // Fix: even though gardens don't get assigned an id, they're still used for pathfinding
-    // So we just assume that the garden's network id is the sane as the cartpusher's original building
-    if (!road_network_id && map_terrain_is(f->grid_offset, TERRAIN_GARDEN)) {
+    // Fix: even though gardens and some buildings don't get assigned a network id, they're still used for pathfinding
+    // So we just assume that the network id is the same as the cartpusher's original building
+    if (!road_network_id &&
+        (map_terrain_is(f->grid_offset, TERRAIN_GARDEN) || map_terrain_is(f->grid_offset, TERRAIN_BUILDING))) {
         road_network_id = b->road_network_id;
     }
 
@@ -308,21 +308,24 @@ void figure_cartpusher_action(figure *f)
             figure_combat_handle_corpse(f);
             break;
         case FIGURE_ACTION_20_CARTPUSHER_INITIAL:
-            set_cart_graphic(f);
+            set_cart_graphic(f, 1);
             if (!map_routing_citizen_is_passable(f->grid_offset)) {
                 f->state = FIGURE_STATE_DEAD;
             }
             if (b->state != BUILDING_STATE_IN_USE || b->figure_id != f->id) {
                 f->state = FIGURE_STATE_DEAD;
             }
+            if (!road_network_id) {
+                f->state = FIGURE_STATE_DEAD;
+            }
             f->wait_ticks++;
-            if (f->wait_ticks > 30) {
+            if (f->wait_ticks > 30 && road_network_id) {
                 determine_cartpusher_destination(f, b, road_network_id);
             }
             f->image_offset = 0;
             break;
         case FIGURE_ACTION_21_CARTPUSHER_DELIVERING_TO_WAREHOUSE:
-            set_cart_graphic(f);
+            set_cart_graphic(f, 1);
             figure_movement_move_ticks_with_percentage(f, 1, percentage_speed);
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
                 f->action_state = FIGURE_ACTION_24_CARTPUSHER_AT_WAREHOUSE;
@@ -342,7 +345,7 @@ void figure_cartpusher_action(figure *f)
             }
             break;
         case FIGURE_ACTION_22_CARTPUSHER_DELIVERING_TO_GRANARY:
-            set_cart_graphic(f);
+            set_cart_graphic(f, 1);
             figure_movement_move_ticks_with_percentage(f, 1, percentage_speed);
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
                 f->action_state = FIGURE_ACTION_25_CARTPUSHER_AT_GRANARY;
@@ -363,7 +366,7 @@ void figure_cartpusher_action(figure *f)
             }
             break;
         case FIGURE_ACTION_23_CARTPUSHER_DELIVERING_TO_WORKSHOP:
-            set_cart_graphic(f);
+            set_cart_graphic(f, 1);
             figure_movement_move_ticks_with_percentage(f, 1, percentage_speed);
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
                 f->action_state = FIGURE_ACTION_26_CARTPUSHER_AT_WORKSHOP;
@@ -410,7 +413,7 @@ void figure_cartpusher_action(figure *f)
         case FIGURE_ACTION_26_CARTPUSHER_AT_WORKSHOP:
             f->wait_ticks++;
             if (f->wait_ticks > 5) {
-                building_workshop_add_raw_material(building_get(f->destination_building_id));
+                building_workshop_add_raw_material(building_get(f->destination_building_id), f->resource_id);
                 f->action_state = FIGURE_ACTION_27_CARTPUSHER_RETURNING;
                 f->wait_ticks = 0;
                 f->destination_x = f->source_x;
@@ -431,49 +434,15 @@ void figure_cartpusher_action(figure *f)
             }
             break;
         case FIGURE_ACTION_234_CARTPUSHER_GOING_TO_ROME_CREATED:
-            if (f->loads_sold_or_carrying <= 0) {
-                f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART); // empty
-            } else if (f->loads_sold_or_carrying == 1) {
-                set_cart_graphic(f);
-            } else {
-                if (cartpusher_carries_food(f)) {
-                    if (f->loads_sold_or_carrying >= 8) {
-                        f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_FOOD) +
-                            CART_OFFSET_8_LOADS_FOOD[f->resource_id];
-                    } else {
-                        f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_FOOD) +
-                            CART_OFFSET_MULTIPLE_LOADS_FOOD[f->resource_id];
-                    }
-                } else {
-                    f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_RESOURCE) +
-                        CART_OFFSET_MULTIPLE_LOADS_NON_FOOD[f->resource_id];
-                }
-                f->cart_image_id += resource_image_offset(f->resource_id, RESOURCE_IMAGE_FOOD_CART);
-            }            const map_tile *entry = city_map_entry_point();
+            set_cart_graphic(f, 0);
+            const map_tile *entry = city_map_entry_point();
             f->action_state = FIGURE_ACTION_235_CARTPUSHER_GOING_TO_ROME;
             f->destination_x = entry->x;
             f->destination_y = entry->y;
             break;
         case FIGURE_ACTION_235_CARTPUSHER_GOING_TO_ROME:
-            if (f->loads_sold_or_carrying <= 0) {
-                f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART); // empty
-            } else if (f->loads_sold_or_carrying == 1) {
-                set_cart_graphic(f);
-            } else {
-                if (cartpusher_carries_food(f)) {
-                    if (f->loads_sold_or_carrying >= 8) {
-                        f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_FOOD) +
-                            CART_OFFSET_8_LOADS_FOOD[f->resource_id];
-                    } else {
-                        f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_FOOD) +
-                            CART_OFFSET_MULTIPLE_LOADS_FOOD[f->resource_id];
-                    }
-                } else {
-                    f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_RESOURCE) +
-                        CART_OFFSET_MULTIPLE_LOADS_NON_FOOD[f->resource_id];
-                }
-                f->cart_image_id += resource_image_offset(f->resource_id, RESOURCE_IMAGE_FOOD_CART);
-            }            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
+            set_cart_graphic(f, 0);
+            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
             figure_movement_move_ticks_with_percentage(f, 1, percentage_speed);
             if (f->direction == DIR_FIGURE_AT_DESTINATION || f->direction == DIR_FIGURE_LOST) {
                 f->state = FIGURE_STATE_DEAD;
@@ -500,8 +469,8 @@ static void determine_granaryman_destination(figure *f, int road_network_id, int
             f->loads_sold_or_carrying = 0;
             set_destination(f, FIGURE_ACTION_54_WAREHOUSEMAN_GETTING_FOOD, dst_building_id, dst.x, dst.y);
             if (config_get(CONFIG_GP_CH_GETTING_GRANARIES_GO_OFFROAD)) {
-                f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
-            }	    
+                f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
+            }
         } else {
             f->state = FIGURE_STATE_DEAD;
             f->is_ghost = 1;
@@ -562,7 +531,7 @@ static void determine_warehouseman_destination(figure *f, int road_network_id, i
         if (dst_building_id) {
             f->loads_sold_or_carrying = 0;
             set_destination(f, FIGURE_ACTION_57_WAREHOUSEMAN_GETTING_RESOURCE, dst_building_id, dst.x, dst.y);
-            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
+            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
         } else {
             f->state = FIGURE_STATE_DEAD;
             f->is_ghost = 1;
@@ -638,31 +607,26 @@ static void determine_warehouseman_destination(figure *f, int road_network_id, i
     f->wait_ticks = 2;
 }
 
-static void warehouseman_initial_action(figure *f, int remove_resources)
+static void warehouseman_initial_action(figure *f, int road_network_id, int remove_resources)
 {
     building *b = building_get(f->building_id);
-    int road_network_id = map_road_network_get(f->grid_offset);
     f->is_ghost = 1;
     f->wait_ticks++;
     if (f->wait_ticks > 2) {
+        f->wait_ticks = 0;
         if (b->type == BUILDING_GRANARY) {
             determine_granaryman_destination(f, road_network_id, remove_resources);
         } else {
             determine_warehouseman_destination(f, road_network_id, remove_resources);
         }
-        if (f->loads_sold_or_carrying == 1) {
-            f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_FOOD) +
-                8 * f->resource_id - 8 + resource_image_offset(f->resource_id, RESOURCE_IMAGE_FOOD_CART);
-        } else {
-            set_cart_graphic(f);
-        }
+        set_cart_graphic(f, 1);
     }
     f->image_offset = 0;
 }
 
 void figure_warehouseman_action(figure *f)
 {
-    f->terrain_usage = TERRAIN_USAGE_ROADS;
+    f->terrain_usage = TERRAIN_USAGE_ROADS_HIGHWAY;
     figure_image_increase_offset(f, 12);
     f->cart_image_id = 0;
     int road_network_id = map_road_network_get(f->grid_offset);
@@ -673,9 +637,10 @@ void figure_warehouseman_action(figure *f)
         f->state = FIGURE_STATE_DEAD;
     }
 
-    // Fix: even though gardens don't get assigned an id, they're still used for pathfinding
-    // So we just assume that the garden's network id is the sane as the cartpusher's original building
-    if (!road_network_id && map_terrain_is(f->grid_offset, TERRAIN_GARDEN)) {
+    // Fix: even though gardens and some buildings don't get assigned a network id, they're still used for pathfinding
+    // So we just assume that the network id is the same as the cartpusher's original building
+    if (!road_network_id &&
+        (map_terrain_is(f->grid_offset, TERRAIN_GARDEN) || map_terrain_is(f->grid_offset, TERRAIN_BUILDING))) {
         road_network_id = b->road_network_id;
     }
 
@@ -687,16 +652,11 @@ void figure_warehouseman_action(figure *f)
             figure_combat_handle_corpse(f);
             break;
         case FIGURE_ACTION_50_WAREHOUSEMAN_CREATED: {
-            warehouseman_initial_action(f, 1);
+            warehouseman_initial_action(f, road_network_id, 1);
             break;
         }
         case FIGURE_ACTION_51_WAREHOUSEMAN_DELIVERING_RESOURCE:
-            if (f->loads_sold_or_carrying == 1) {
-                f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_FOOD) +
-                    8 * f->resource_id - 8 + resource_image_offset(f->resource_id, RESOURCE_IMAGE_FOOD_CART);
-            } else {
-                set_cart_graphic(f);
-            }
+            set_cart_graphic(f, 1);
             figure_movement_move_ticks_with_percentage(f, 1, percentage_speed);
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
                 f->action_state = FIGURE_ACTION_52_WAREHOUSEMAN_AT_DELIVERY_BUILDING;
@@ -735,7 +695,7 @@ void figure_warehouseman_action(figure *f)
                         }
                         break;
                     default: // workshop
-                        building_workshop_add_raw_material(b);
+                        building_workshop_add_raw_material(b, f->resource_id);
                         break;
                 }
                 if (delivered) {
@@ -761,9 +721,9 @@ void figure_warehouseman_action(figure *f)
             }
             break;
         case FIGURE_ACTION_54_WAREHOUSEMAN_GETTING_FOOD:
-            if (config_get(CONFIG_GP_CH_GETTING_GRANARIES_GO_OFFROAD)) {	    
-                f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
-	        }
+            if (config_get(CONFIG_GP_CH_GETTING_GRANARIES_GO_OFFROAD)) {
+                f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
+            }
             f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART); // empty
             figure_movement_move_ticks_with_percentage(f, 1, percentage_speed);
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
@@ -780,9 +740,9 @@ void figure_warehouseman_action(figure *f)
             } 
             break;
         case FIGURE_ACTION_55_WAREHOUSEMAN_AT_GRANARY:
-            if (config_get(CONFIG_GP_CH_GETTING_GRANARIES_GO_OFFROAD)) {	    
-                f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
-	        }
+            if (config_get(CONFIG_GP_CH_GETTING_GRANARIES_GO_OFFROAD)) {
+                f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
+            }
             f->wait_ticks++;
             if (f->wait_ticks > 4) {
                 int resource;
@@ -799,24 +759,11 @@ void figure_warehouseman_action(figure *f)
             f->image_offset = 0;
             break;
         case FIGURE_ACTION_56_WAREHOUSEMAN_RETURNING_WITH_FOOD:
-            if (config_get(CONFIG_GP_CH_GETTING_GRANARIES_GO_OFFROAD)) {	    
-                f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
-	        }
-            // update graphic
-            if (f->loads_sold_or_carrying <= 0) {
-                f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART); // empty
-            } else if (f->loads_sold_or_carrying == 1) {
-                set_cart_graphic(f);
-            } else {
-                if (f->loads_sold_or_carrying >= 8) {
-                    f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_FOOD) +
-                        CART_OFFSET_8_LOADS_FOOD[f->resource_id];
-                } else {
-                    f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_FOOD) +
-                        CART_OFFSET_MULTIPLE_LOADS_FOOD[f->resource_id];
-                }
-                f->cart_image_id += resource_image_offset(f->resource_id, RESOURCE_IMAGE_FOOD_CART);
+            if (config_get(CONFIG_GP_CH_GETTING_GRANARIES_GO_OFFROAD)) {
+                f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
             }
+            // update graphic
+            set_cart_graphic(f, 0);
             figure_movement_move_ticks_with_percentage(f, 1, percentage_speed);
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
                 for (int i = 0; i < f->loads_sold_or_carrying; i++) {
@@ -830,7 +777,7 @@ void figure_warehouseman_action(figure *f)
             }
             break;
         case FIGURE_ACTION_57_WAREHOUSEMAN_GETTING_RESOURCE:
-            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
+            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
             f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART); // empty
             figure_movement_move_ticks_with_percentage(f, 1, percentage_speed);
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
@@ -847,7 +794,7 @@ void figure_warehouseman_action(figure *f)
             }
             break;
         case FIGURE_ACTION_58_WAREHOUSEMAN_AT_WAREHOUSE:
-            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
+            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
             f->wait_ticks++;
             if (f->wait_ticks > 4) {
                 f->loads_sold_or_carrying = 0;
@@ -866,22 +813,8 @@ void figure_warehouseman_action(figure *f)
             f->image_offset = 0;
             break;
         case FIGURE_ACTION_59_WAREHOUSEMAN_RETURNING_WITH_RESOURCE:
-            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
-            // update graphic
-            if (f->loads_sold_or_carrying <= 0) {
-                f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART); // empty
-            } else if (f->loads_sold_or_carrying == 1) {
-                set_cart_graphic(f);
-            } else {
-                if (cartpusher_carries_food(f)) {
-                    f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_FOOD) +
-                        CART_OFFSET_MULTIPLE_LOADS_FOOD[f->resource_id];
-                } else {
-                    f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART_MULTIPLE_RESOURCE) +
-                        CART_OFFSET_MULTIPLE_LOADS_NON_FOOD[f->resource_id];
-                }
-                f->cart_image_id += resource_image_offset(f->resource_id, RESOURCE_IMAGE_FOOD_CART);
-            }
+            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
+            set_cart_graphic(f, 0);
             figure_movement_move_ticks_with_percentage(f, 1, percentage_speed);
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
                 for (int i = 0; i < f->loads_sold_or_carrying; i++) {
@@ -895,7 +828,7 @@ void figure_warehouseman_action(figure *f)
             }
             break;
         case FIGURE_ACTION_233_WAREHOUSEMAN_RECONSIDER_TARGET:
-            warehouseman_initial_action(f, 0);
+            warehouseman_initial_action(f, road_network_id, 0);
             break;
     }
     update_image(f);

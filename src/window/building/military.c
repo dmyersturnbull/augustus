@@ -114,7 +114,7 @@ void window_building_draw_barracks(building_info_context *c)
     window_building_play_sound(c, "wavs/barracks.wav");
     outer_panel_draw(c->x_offset, c->y_offset, c->width_blocks, c->height_blocks);
     lang_text_draw_centered(136, 0, c->x_offset, c->y_offset + 10, BLOCK_SIZE * c->width_blocks, FONT_LARGE_BLACK);
-    image_draw(image_group(GROUP_RESOURCE_ICONS) + RESOURCE_WEAPONS, c->x_offset + 64, c->y_offset + 38,
+    image_draw(resource_get_data(RESOURCE_WEAPONS)->image.icon, c->x_offset + 64, c->y_offset + 38,
         COLOR_MASK_NONE, SCALE_NONE);
 
     building *b = building_get(c->building_id);
@@ -484,7 +484,7 @@ void window_building_draw_legion_info_foreground(building_info_context *c)
     lang_text_draw_multiline(138, text_id, c->x_offset + 24, c->y_offset + 292,
         BLOCK_SIZE * (c->width_blocks - 4), FONT_NORMAL_GREEN);
 
-    if (!m->is_at_fort) {
+    if (!m->is_at_fort && !m->in_distant_battle) {
         button_border_draw(c->x_offset + BLOCK_SIZE * (c->width_blocks - 18) / 2,
             c->y_offset + BLOCK_SIZE * c->height_blocks - 48, 288, 32, data.return_button_id == 1);
         lang_text_draw_centered(138, 58, c->x_offset + BLOCK_SIZE * (c->width_blocks - 18) / 2,
@@ -602,6 +602,7 @@ void window_building_draw_palisade(building_info_context *c)
     window_building_play_sound(c, "wavs/wall.wav");
     outer_panel_draw(c->x_offset, c->y_offset, c->width_blocks, c->height_blocks);
     text_draw_centered(translation_for(TR_BUILDING_PALISADE), c->x_offset, c->y_offset + 10, BLOCK_SIZE * c->width_blocks, FONT_LARGE_BLACK, 0);
-    window_building_draw_description_from_tr_string_at(c, TR_BUILDING_PALISADE_DESC, BLOCK_SIZE * c->height_blocks - 158);
+    window_building_draw_description_at(c, BLOCK_SIZE * c->height_blocks - 158, CUSTOM_TRANSLATION,
+        TR_BUILDING_PALISADE_DESC);
 }
 

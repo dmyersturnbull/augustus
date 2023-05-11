@@ -14,6 +14,7 @@
 #define CARAVANSERAI_LEVY_MONTHLY 8
 #define LARGE_TEMPLE_LEVY_MONTHLY 8
 #define SMALL_MAUSOLEUM_LEVY_MONTHLY 2
+#define HIGHWAY_LEVY_MONTHLY 1
 
 #define BUILDINGS_WITH_LEVIES 26
 #define BUILDINGS_WITH_TOURISM 12
@@ -34,7 +35,7 @@ int city_finance_treasury(void);
 
 void city_finance_treasury_add(int amount);
 
-void city_finance_treasury_add_tourism(int amount);
+void city_finance_treasury_add_miscellaneous(int amount);
 
 int city_finance_out_of_money(void);
 
@@ -107,4 +108,5 @@ const finance_overview *city_finance_overview_last_year(void);
 const finance_overview *city_finance_overview_this_year(void);
 
 int city_finance_spawn_tourist(void);
+
 #endif // CITY_FINANCE_H

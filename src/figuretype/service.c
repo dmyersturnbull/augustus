@@ -71,7 +71,7 @@ void figure_destination_priest_action(figure *f)
 {
     building *b = building_get(f->building_id);
     building *destination = building_get(f->destination_building_id);
-    f->terrain_usage = TERRAIN_USAGE_ROADS;
+    f->terrain_usage = TERRAIN_USAGE_ROADS_HIGHWAY;
     if (b->state != BUILDING_STATE_IN_USE || (b->figure_id4 != f->id && b->figure_id2 != f->id) || destination->state != BUILDING_STATE_IN_USE) {
         f->state = FIGURE_STATE_DEAD;
     }
@@ -92,7 +92,7 @@ void figure_destination_priest_action(figure *f)
         case FIGURE_ACTION_214_DESTINATION_MARS_PRIEST_CREATED:
             f->destination_x = destination->road_access_x;
             f->destination_y = destination->road_access_y;
-            int market_units = b->data.market.inventory[f->collecting_item_id];
+            int market_units = b->resources[f->collecting_item_id];
             int num_loads;
             int max_units = MAX_FOOD_STOCKED_MESS_HALL - market_units;
 
@@ -122,7 +122,7 @@ void figure_destination_priest_action(figure *f)
                 return;
             }
 
-            b->data.market.inventory[f->collecting_item_id] -= (100 * num_loads);
+            b->resources[f->collecting_item_id] -= (100 * num_loads);
 
             // create delivery boys
             int priest_id = f->id;
@@ -146,7 +146,7 @@ void figure_destination_priest_action(figure *f)
             }
             break;
         case FIGURE_ACTION_215_PRIEST_GOING_TO_MESS_HALL:
-            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
+            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
             figure_movement_move_ticks(f, 1);
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
                 f->state = FIGURE_STATE_DEAD;
@@ -247,15 +247,27 @@ static int fight_plague(figure *f, int force)
 {
     int building_with_plague = 0;
 
-    // find in docks
-    for (building *dock = building_first_of_type(BUILDING_DOCK); dock; dock = dock->next_of_type) {
-        if (dock->has_plague) {
-            building_with_plague = dock->id;
-            break;
+    // Find in houses
+    for (building_type type = BUILDING_HOUSE_SMALL_TENT; type <= BUILDING_HOUSE_LUXURY_PALACE; type++) {
+        for (building *house = building_first_of_type(type); house; house = house->next_of_type) {
+            if (house->has_plague) {
+                building_with_plague = house->id;
+                break;
+            }
         }
     }
 
-    // if no docks, find in warehouses
+    // If no houses, find in docks
+    if (!building_with_plague) {
+        for (building *dock = building_first_of_type(BUILDING_DOCK); dock; dock = dock->next_of_type) {
+            if (dock->has_plague) {
+                building_with_plague = dock->id;
+                break;
+            }
+        }
+    }
+
+    // If no docks, find in warehouses
     if (!building_with_plague) {
         for (building *warehouse = building_first_of_type(BUILDING_WAREHOUSE); warehouse; warehouse = warehouse->next_of_type) {
             if (warehouse->has_plague) {
@@ -264,7 +276,7 @@ static int fight_plague(figure *f, int force)
             }
         }
 
-        // if no warehouse, find in granaries
+        // If no warehouse, find in granaries
         if (!building_with_plague) {
             for (building *granary = building_first_of_type(BUILDING_GRANARY); granary; granary = granary->next_of_type) {
                 if (granary->has_plague) {
@@ -275,7 +287,7 @@ static int fight_plague(figure *f, int force)
         }
     }
 
-    // no plague in buildings
+    // No plague in buildings
     if (!building_with_plague) {
         return 0;
     }
@@ -322,7 +334,7 @@ static void heal_plague(figure *f)
         if (building_with_plague->sickness_duration < 95) {
             building_with_plague->sickness_duration = 95;
         }
-        building_with_plague->sickness_last_doctor_cure = 99; // Use sickness_last_doctor_cure = 99 to know if doctor is currently healing building
+        building_with_plague->sickness_doctor_cure = 99; // Use sickness_doctor_cure = 99 to know if doctor is currently healing building (Need to stay 99 for retro-compatibility)
     } else {
         f->wait_ticks = 1;
     }
@@ -350,10 +362,12 @@ void figure_doctor_action(figure *f)
 
     // special actions
     if (!fight_plague(f, 0)) {
+        f->terrain_usage = TERRAIN_USAGE_ROADS;
         culture_action(f, GROUP_FIGURE_DOCTOR_SURGEON);
     }
     switch (f->action_state) {
         case FIGURE_ACTION_231_DOCTOR_GOING_TO_PLAGUE:
+            f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
             figure_movement_move_ticks(f, 1);
             if (f->direction == DIR_FIGURE_AT_DESTINATION) {
                 f->action_state = FIGURE_ACTION_232_DOCTOR_AT_PLAGUE;
@@ -379,7 +393,8 @@ void figure_doctor_action(figure *f)
             if (f->image_offset >= sizeof DOCTOR_HEALING_OFFSETS / sizeof DOCTOR_HEALING_OFFSETS[0]) {
                 f->image_offset = 0;
             }
-            f->image_id = assets_get_group_id("Health") + DOCTOR_HEALING_OFFSETS[f->image_offset];
+            f->image_id = assets_get_image_id("Health_Education", "Doctor heal") +
+                DOCTOR_HEALING_OFFSETS[f->image_offset];
             break;
     }
 }

@@ -73,17 +73,25 @@ typedef enum {
     WARNING_DATA_COPY_NOT_SUPPORTED = 79,
     WARNING_DATA_PASTE_SUCCESS = 80,
     WARNING_DATA_PASTE_FAILURE = 81,
+    WARNING_DATA_MOTHBALL_ON = 82,
+    WARNING_DATA_MOTHBALL_OFF = 83,
+    WARNING_GOLD_NEEDED = 84,
+    WARNING_BUILD_GOLD_MINE = 85,
+    WARNING_SENATE_NEEDED = 86,
+    WARNING_BUILD_SENATE = 87
 } warning_type;
 
-void city_warning_show(warning_type type);
+#define NEW_WARNING_SLOT 0
+
+int city_warning_show(warning_type type, int id);
+int city_warning_show_custom(const uint8_t *text, int id);
 
 int city_has_warnings(void);
 
-const uint8_t *city_warning_get(int id);
+const uint8_t *city_warning_get(int position);
 
+void city_warning_clear_id(int id);
 void city_warning_clear_all(void);
 void city_warning_clear_outdated(void);
-
-void city_warning_show_console(uint8_t *warning_text);
 
 #endif // CITY_WARNING_H

@@ -21,11 +21,13 @@
 #include "widget/minimap.h"
 #include "widget/sidebar/editor.h"
 #include "window/editor/allowed_buildings.h"
+#include "window/editor/custom_messages.h"
 #include "window/editor/demand_changes.h"
 #include "window/editor/invasions.h"
 #include "window/editor/map.h"
 #include "window/editor/price_changes.h"
 #include "window/editor/requests.h"
+#include "window/editor/scenario_events.h"
 #include "window/editor/special_events.h"
 #include "window/editor/starting_conditions.h"
 #include "window/editor/win_criteria.h"
@@ -42,6 +44,10 @@ static void button_win_criteria(int param1, int param2);
 static void button_special_events(int param1, int param2);
 static void button_price_changes(int param1, int param2);
 static void button_demand_changes(int param1, int param2);
+static void button_scenario_events(int param1, int param2);
+static void button_custom_messages(int param1, int param2);
+static void button_change_intro(int param1, int param2);
+static void button_delete_intro(int param1, int param2);
 static void change_climate(int param1, int param2);
 static void change_image(int forward, int param2);
 
@@ -56,7 +62,11 @@ static generic_button buttons[] = {
     {212, 356, 250, 30, button_special_events, button_none, 8, 0},
     {212, 396, 250, 30, button_price_changes, button_none, 9, 0},
     {212, 436, 250, 30, button_demand_changes, button_none, 10, 0},
+    {470, 76, 250, 30, button_scenario_events, button_none, 11, 0},
+    {470, 116, 250, 30, button_custom_messages, button_none, 12, 0},
+    {470, 156, 250, 30, button_change_intro, button_delete_intro, 13, 0},
 };
+#define NUMBER_OF_BUTTONS (sizeof(buttons) / sizeof(generic_button))
 
 static arrow_button image_arrows[] = {
     {20, 424, 19, 24, change_image, 0, 0},
@@ -101,7 +111,7 @@ static void draw_background(void)
 
     graphics_in_dialog();
 
-    outer_panel_draw(0, 28, 30, 28);
+    outer_panel_draw(0, 28, 46, 34);
 
     button_border_draw(18, 278, 184, 144, 0);
     image_draw(image_group(GROUP_EDITOR_SCENARIO_IMAGE) + scenario_image_id(), 20, 280, COLOR_MASK_NONE, SCALE_NONE);
@@ -130,8 +140,8 @@ static void draw_foreground(void)
     if (request.resource) {
         lang_text_draw_year(scenario_property_start_year() + request.year, 222, 165, FONT_NORMAL_BLACK);
         int width = text_draw_number(request.amount, '@', " ", 312, 165, FONT_NORMAL_BLACK, 0);
-        int offset = request.resource + resource_image_offset(request.resource, RESOURCE_IMAGE_ICON);
-        image_draw(image_group(GROUP_EDITOR_RESOURCE_ICONS) + offset, 322 + width, 160, COLOR_MASK_NONE, SCALE_NONE);
+        image_draw(resource_get_data(request.resource)->image.editor.icon,
+            322 + width, 160, COLOR_MASK_NONE, SCALE_NONE);
     } else {
         lang_text_draw_centered(44, 19, 212, 165, 250, FONT_NORMAL_BLACK);
     }
@@ -168,6 +178,12 @@ static void draw_foreground(void)
     button_border_draw(212, 436, 250, 30, data.focus_button_id == 10);
     lang_text_draw_centered(44, 94, 212, 445, 250, FONT_NORMAL_BLACK);
 
+    button_border_draw(470, 76, 250, 30, data.focus_button_id == 11);
+    lang_text_draw_centered(CUSTOM_TRANSLATION, TR_EDITOR_SCENARIO_EVENTS_TITLE, 470, 85, 250, FONT_NORMAL_BLACK);
+
+    button_border_draw(470, 116, 250, 30, data.focus_button_id == 12);
+    lang_text_draw_centered(CUSTOM_TRANSLATION, TR_EDITOR_CUSTOM_MESSAGES_TITLE, 470, 125, 250, FONT_NORMAL_BLACK);
+
     arrow_buttons_draw(0, 0, image_arrows, 2);
 
     graphics_reset_dialog();
@@ -177,7 +193,7 @@ static void handle_input(const mouse *m, const hotkeys *h)
 {
     const mouse *m_dialog = mouse_in_dialog(m);
     if (input_box_handle_mouse(m_dialog, &scenario_description_input) ||
-        generic_buttons_handle_mouse(m_dialog, 0, 0, buttons, 10, &data.focus_button_id) ||
+        generic_buttons_handle_mouse(m_dialog, 0, 0, buttons, NUMBER_OF_BUTTONS, &data.focus_button_id) ||
         arrow_buttons_handle_mouse(m_dialog, 0, 0, image_arrows, 2, 0) ||
         widget_sidebar_editor_handle_mouse_attributes(m)) {
         return;
@@ -248,10 +264,32 @@ static void button_demand_changes(int param1, int param2)
     window_editor_demand_changes_show();
 }
 
+static void button_scenario_events(int param1, int param2)
+{
+    stop(0);
+    window_editor_scenario_events_show();
+}
+
+static void button_custom_messages(int param1, int param2)
+{
+    stop(0);
+    window_editor_custom_messages_show();
+}
+
+static void button_change_intro(int param1, int param2)
+{
+
+}
+
+static void button_delete_intro(int param1, int param2)
+{
+
+}
+
 static void change_climate(int param1, int param2)
 {
     scenario_editor_cycle_climate();
-    image_load_climate(scenario_property_climate(), 1, 0);
+    image_load_climate(scenario_property_climate(), 1, 0, 0);
     widget_minimap_invalidate();
     window_request_refresh();
 }

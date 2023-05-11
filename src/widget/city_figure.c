@@ -217,13 +217,14 @@ static void adjust_pixel_offset(const figure *f, int *pixel_x, int *pixel_y)
         if (f->figures_on_same_tile_index && f->type != FIGURE_BALLISTA) {
             // an attempt to not let people walk through each other
             static const int BUSY_ROAD_X_OFFSETS[] = {
-                0, 8, 8, -8, -8, 0, 16, 0, -16, 8, -8, 16, -16, 16, -16, 8, -8, 0, 24, 0, -24, 0, 0, 0
+                0, 8, 8, -8, -8, 0, 16, 0, -16, 8, -8, 16, -16, 16, -16, 8, -8, 0, 24, 0, -24
             };
             static const int BUSY_ROAD_Y_OFFSETS[] = {
-                0, 0, 8, 8, -8, -16, 0, 16, 0, -16, 16, 8, -8, -8, 8, 16, -16, -24, 0, 24, 0, 0, 0, 0
+                0, 0, 8, 8, -8, -16, 0, 16, 0, -16, 16, 8, -8, -8, 8, 16, -16, -24, 0, 24, 0
             };
-            x_offset += BUSY_ROAD_X_OFFSETS[f->figures_on_same_tile_index];
-            y_offset += BUSY_ROAD_Y_OFFSETS[f->figures_on_same_tile_index];
+            static const int BUSY_ROAD_OFFSET_LEN = 21;
+            x_offset += BUSY_ROAD_X_OFFSETS[f->figures_on_same_tile_index % BUSY_ROAD_OFFSET_LEN];
+            y_offset += BUSY_ROAD_Y_OFFSETS[f->figures_on_same_tile_index % BUSY_ROAD_OFFSET_LEN];
         }
     }
 
@@ -240,9 +241,8 @@ static void adjust_pixel_offset(const figure *f, int *pixel_x, int *pixel_y)
 
 
     const image *img = f->is_enemy_image ? image_get_enemy(f->image_id) : image_get(f->image_id);
-    *pixel_x += x_offset - img->animation.sprite_offset_x;
-    *pixel_y += y_offset - img->animation.sprite_offset_y;
-
+    *pixel_x += x_offset - (img->animation ? img->animation->sprite_offset_x : 0);
+    *pixel_y += y_offset - (img->animation ? img->animation->sprite_offset_y : 0);
 }
 
 static void draw_figure(const figure *f, int x, int y, float scale, int highlight)

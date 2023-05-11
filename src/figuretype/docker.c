@@ -19,6 +19,7 @@
 #include "figure/route.h"
 #include "figure/trader.h"
 #include "figuretype/trader.h"
+#include "game/resource.h"
 #include "map/road_access.h"
 
 #define INFINITE 10000
@@ -121,7 +122,7 @@ static int store_destination_map_point(int building_id, map_point *dst)
         map_point_store_result(b->x + 1, b->y + 1, dst);
     } else if (b->has_road_access == 1) {
         map_point_store_result(b->x, b->y, dst);
-    } else if (!map_has_road_access(b->x, b->y, 3, dst)) {
+    } else if (!map_has_road_access_rotation(b->subtype.orientation, b->x, b->y, 3, dst)) {
         return 0;
     }
     return 1;
@@ -140,10 +141,10 @@ static int get_closest_building_for_import(int x, int y, int city_id, building *
 {
     int resource = *import_resource;
     if (resource == RESOURCE_NONE) {
-        int importable[16];
+        int importable[RESOURCE_MAX];
         importable[RESOURCE_NONE] = 0;
         for (int r = RESOURCE_MIN; r < RESOURCE_MAX; r++) {
-            importable[r] = building_distribution_is_good_accepted(r - 1, dock) &&
+            importable[r] = building_distribution_is_good_accepted(r, dock) &&
                 empire_can_import_resource_from_city(city_id, r);
         }
         resource = city_trade_next_docker_import_resource();
@@ -212,10 +213,10 @@ static int get_closest_building_for_export(int x, int y, int city_id, building *
 {
     int resource = *export_resource;
     if (resource == RESOURCE_NONE) {
-        int exportable[16];
+        int exportable[RESOURCE_MAX];
         exportable[RESOURCE_NONE] = 0;
         for (int r = RESOURCE_MIN; r < RESOURCE_MAX; r++) {
-            exportable[r] = building_distribution_is_good_accepted(r - 1, dock) &&
+            exportable[r] = building_distribution_is_good_accepted(r, dock) &&
                 empire_can_export_resource_to_city(city_id, r);
         }
         resource = city_trade_next_docker_export_resource();
@@ -342,8 +343,7 @@ static int fetch_export_resource(figure *f, building *dock, int add_to_bought)
 
 static void set_cart_graphic(figure *f)
 {
-    f->cart_image_id = image_group(GROUP_FIGURE_CARTPUSHER_CART) + 8 * f->resource_id;
-    f->cart_image_id += resource_image_offset(f->resource_id, RESOURCE_IMAGE_CART);
+    f->cart_image_id = resource_get_data(f->resource_id)->image.cart.single_load;
 }
 
 static void set_docker_as_idle(figure *f)
@@ -377,7 +377,7 @@ void figure_docker_action(figure *f)
             b->data.dock.trade_ship_id = 0;
         }
     }
-    f->terrain_usage = TERRAIN_USAGE_ROADS;
+    f->terrain_usage = TERRAIN_USAGE_ROADS_HIGHWAY;
     switch (f->action_state) {
         case FIGURE_ACTION_150_ATTACK:
             figure_combat_handle_attack(f);

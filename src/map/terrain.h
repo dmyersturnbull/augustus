@@ -20,17 +20,23 @@ enum {
     TERRAIN_FOUNTAIN_RANGE = 0x2000,
     TERRAIN_WALL = 0x4000,
     TERRAIN_GATEHOUSE = 0x8000,
+    TERRAIN_ORIGINALLY_TREE = 0x10000,
+    TERRAIN_HIGHWAY_TOP_LEFT = 0x20000,
+    TERRAIN_HIGHWAY_BOTTOM_LEFT = 0x40000,
+    TERRAIN_HIGHWAY_TOP_RIGHT = 0x80000,
+    TERRAIN_HIGHWAY_BOTTOM_RIGHT = 0x100000,
+    TERRAIN_HIGHWAY = TERRAIN_HIGHWAY_TOP_LEFT | TERRAIN_HIGHWAY_BOTTOM_LEFT | TERRAIN_HIGHWAY_TOP_RIGHT | TERRAIN_HIGHWAY_BOTTOM_RIGHT,
     // combined
     TERRAIN_WALL_OR_GATEHOUSE = TERRAIN_WALL | TERRAIN_GATEHOUSE,
-    TERRAIN_NOT_CLEAR = 0xd77f,
-    TERRAIN_NOT_CLEAR_EXCEPT_ROAD = 0xd73f,
-    TERRAIN_CLEARABLE = 0xd17f,
+    TERRAIN_NOT_CLEAR = 0xd77f | TERRAIN_HIGHWAY,
+    TERRAIN_NOT_CLEAR_EXCEPT_ROAD = 0xd73f | TERRAIN_HIGHWAY,
+    TERRAIN_CLEARABLE = 0xd17f | TERRAIN_HIGHWAY,
     TERRAIN_IMPASSABLE = 0xc75f,
     TERRAIN_IMPASSABLE_ENEMY = 0x1237,
     TERRAIN_IMPASSABLE_WOLF = 0xd73f,
     TERRAIN_ELEVATION_ROCK = 0x202,
-    TERRAIN_ALL = 0xffff,
-    TERRAIN_ORIGINALLY_TREE = 0x10000
+    TERRAIN_ALL = 0xffff | TERRAIN_HIGHWAY,
+    TERRAIN_MAP_EDGE = TERRAIN_TREE | TERRAIN_WATER,
 };
 
 int map_terrain_is(int grid_offset, int terrain);
@@ -38,6 +44,10 @@ int map_terrain_is(int grid_offset, int terrain);
 int map_terrain_is_superset(int grid_offset, int terrain_sum);
 
 int map_terrain_get(int grid_offset);
+
+int map_terrain_get_from_buffer_16(buffer *buf, int grid_offset);
+
+int map_terrain_get_from_buffer_32(buffer *buf, int grid_offset);
 
 void map_terrain_set(int grid_offset, int terrain);
 
@@ -76,6 +86,8 @@ int map_terrain_has_adjacent_y_with_type(int grid_offset, int terrain);
 int map_terrain_exists_tile_in_area_with_type(int x, int y, int size, int terrain);
 
 int map_terrain_exists_tile_in_radius_with_type(int x, int y, int size, int radius, int terrain);
+
+int map_terrain_exists_rock_in_radius(int x, int y, int size, int radius);
 
 int map_terrain_exists_clear_tile_in_radius(int x, int y, int size, int radius, int except_grid_offset,
     int *x_tile, int *y_tile);

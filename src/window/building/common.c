@@ -87,7 +87,7 @@ static int draw_employment_info(building_info_context *c, building *b, int y_off
 
 void window_building_draw_levy(int amount, int x_offset, int y_offset)
 {
-    image_draw(image_group(GROUP_RESOURCE_ICONS) + 16, x_offset + 300, y_offset + 5, COLOR_MASK_NONE, SCALE_NONE);
+    image_draw(resource_get_data(RESOURCE_DENARII)->image.icon, x_offset + 300, y_offset + 5, COLOR_MASK_NONE, SCALE_NONE);
     int width = text_draw_money(abs(amount), x_offset + 320, y_offset + 10, FONT_NORMAL_BROWN);
     if (amount > 0) {
         text_draw(translation_for(TR_BUILDING_INFO_MONTHLY_LEVY),
@@ -159,18 +159,6 @@ void window_building_draw_description(building_info_context *c, int text_group, 
         BLOCK_SIZE * (c->width_blocks - 4), FONT_NORMAL_BLACK);
 }
 
-void window_building_draw_description_from_tr_string(building_info_context *c, int translation_key)
-{
-    text_draw_multiline(translation_for(translation_key), c->x_offset + 32, c->y_offset + 56,
-        BLOCK_SIZE * (c->width_blocks - 4), FONT_NORMAL_BLACK, 0);
-}
-
-void window_building_draw_description_from_tr_string_at(building_info_context *c, int translation_key, int y_offset)
-{
-    text_draw_multiline(translation_for(translation_key), c->x_offset + 32, c->y_offset + y_offset,
-        BLOCK_SIZE * (c->width_blocks - 4), FONT_NORMAL_BLACK, 0);
-}
-
 void window_building_draw_description_at(building_info_context *c, int y_offset, int text_group, int text_id)
 {
     lang_text_draw_multiline(text_group, text_id, c->x_offset + 32, c->y_offset + y_offset,
@@ -188,21 +176,26 @@ void window_building_play_sound(building_info_context *c, const char *sound_file
 static void window_building_draw_monument_resources_needed(building_info_context *c)
 {
     building *b = building_get(c->building_id);
+    int y_offset = 95;
     if (building_monument_needs_resources(b)) {
-        for (int r = RESOURCE_TIMBER; r <= RESOURCE_MARBLE; r++) {
-            int total_resources_needed = building_monument_resources_needed_for_monument_type(b->type, r,
+        for (resource_type r = RESOURCE_MIN; r < RESOURCE_MAX; r++) {
+            int resource_needed_amount = building_monument_resources_needed_for_monument_type(b->type, r,
                 b->data.monument.phase);
-            int resources_delivered = total_resources_needed - b->data.monument.resources_needed[r];
-            int image_id = image_group(GROUP_RESOURCE_ICONS);
-            image_draw(image_id + r, c->x_offset + 22, c->y_offset - 105 + r * 20, COLOR_MASK_NONE, SCALE_NONE);
-            int width = text_draw_number(resources_delivered, '@', "/",
-                c->x_offset + 54, c->y_offset + 10 + r * 20 - 106, FONT_NORMAL_BLACK, 0);
-            text_draw_number(total_resources_needed, '@', " ",
-                c->x_offset + 44 + width, c->y_offset + 10 + r * 20 - 106, FONT_NORMAL_BLACK, 0);
+            if (!resource_needed_amount) {
+                continue;
+            }
+            int resource_delivered_amount = resource_needed_amount - b->resources[r];
+            image_draw(resource_get_data(r)->image.icon, c->x_offset + 22, c->y_offset + y_offset,
+                COLOR_MASK_NONE, SCALE_NONE);
+            int width = text_draw_number(resource_delivered_amount, '@', "/",
+                c->x_offset + 54, c->y_offset + y_offset + 5, FONT_NORMAL_BLACK, 0);
+            text_draw_number(resource_needed_amount, '@', " ",
+                c->x_offset + 44 + width, c->y_offset + +y_offset + 5, FONT_NORMAL_BLACK, 0);
+            y_offset += 20;
         }
     } else {
-        text_draw_multiline(translation_for(TR_BUILDING_MONUMENT_CONSTRUCTION_ARCHITECT_NEEDED), c->x_offset + 22, c->y_offset + 95,
-            BLOCK_SIZE * (c->width_blocks - 4), FONT_NORMAL_BLACK, 0);
+        text_draw_multiline(translation_for(TR_BUILDING_MONUMENT_CONSTRUCTION_ARCHITECT_NEEDED),
+            c->x_offset + 22, c->y_offset + 95, BLOCK_SIZE * (c->width_blocks - 4), FONT_NORMAL_BLACK, 0);
     }
 }
 
@@ -213,7 +206,7 @@ void window_building_draw_monument_construction_process(building_info_context *c
 
     if (b->data.monument.phase != MONUMENT_FINISHED) {
         if (!c->has_road_access) {
-            window_building_draw_description_from_tr_string(c,
+            window_building_draw_description(c, CUSTOM_TRANSLATION,
                 TR_WINDOW_BUILDING_INFO_WARNING_NO_MONUMENT_ROAD_ACCESS);
             text_draw_multiline(translation_for(tr_construction_desc),
                 c->x_offset + 22, c->y_offset + 180, 16 * (c->width_blocks - 4), FONT_NORMAL_BLACK, 0);
@@ -241,8 +234,10 @@ void window_building_draw_monument_construction_process(building_info_context *c
         }
         if (c->height_blocks > 26) {
             int phase_offset = b->data.monument.phase % 2;
-            image_draw(assets_get_image_id("UI_Elements", "Const. Banner 01") +
-                phase_offset, c->x_offset + 32, c->y_offset + 196 + height, COLOR_MASK_NONE, SCALE_NONE);
+            image_draw_border(assets_get_image_id("UI", "Large_Banner_Border"),
+                c->x_offset + 32, c->y_offset + 196 + height, COLOR_MASK_NONE);
+            image_draw(assets_get_image_id("UI", "Const. Banner 01") +
+                phase_offset, c->x_offset + 37, c->y_offset + 201 + height, COLOR_MASK_NONE, SCALE_NONE);
         }
     }
 }

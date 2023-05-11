@@ -78,7 +78,7 @@ static int is_unpatched(void)
 
 int game_init(void)
 {
-    if (!image_load_climate(CLIMATE_CENTRAL, 0, 1)) {
+    if (!image_load_climate(CLIMATE_CENTRAL, 0, 1, 0)) {
         errlog("unable to load main graphics");
         return 0;
     }
@@ -89,7 +89,7 @@ int game_init(void)
     int missing_fonts = 0;
     if (!image_load_fonts(encoding_get())) {
         errlog("unable to load font graphics");
-        if (encoding_get() == ENCODING_KOREAN) {
+        if (encoding_get() == ENCODING_KOREAN || encoding_get() == ENCODING_JAPANESE) {
             missing_fonts = 1;
         } else {
             return 0;
@@ -102,10 +102,11 @@ int game_init(void)
     }
 
     init_augustus_building_properties();
-    load_custom_messages();
+    load_augustus_messages();
     sound_system_init();
     game_state_init();
-    int missing_assets = !assets_get_image_id("Roadblocks", "roadblock"); // If can't find roadblocks asset, extra assets not installed properly
+    resource_init();
+    int missing_assets = !assets_get_image_id("Logistics", "roadblock"); // If can't find roadblocks asset, extra assets not installed properly
     window_logo_show(missing_fonts ? MESSAGE_MISSING_FONTS : (is_unpatched() ? MESSAGE_MISSING_PATCH : (missing_assets ? MESSAGE_MISSING_EXTRA_ASSETS : MESSAGE_NONE)));
     return 1;
 }
@@ -122,17 +123,20 @@ static int reload_language(int is_editor, int reload_images)
     }
     encoding_type encoding = update_encoding();
     if (!is_editor) {
-        load_custom_messages();
+        load_augustus_messages();
     }
 
     if (!image_load_fonts(encoding)) {
         errlog("unable to load font graphics");
         return 0;
     }
-    if (!image_load_climate(scenario_property_climate(), is_editor, reload_images)) {
+    if (!image_load_climate(scenario_property_climate(), is_editor, reload_images, 0)) {
         errlog("unable to load main graphics");
         return 0;
     }
+
+    resource_init();
+
     return 1;
 }
 

@@ -32,7 +32,7 @@ static void button_hotkey(int row, int is_alternative);
 static void button_reset_defaults(int param1, int param2);
 static void button_close(int save, int param2);
 
-static scrollbar_type scrollbar = { 580, 72, 352, on_scroll };
+static scrollbar_type scrollbar = {580, 72, 352, 560, NUM_VISIBLE_OPTIONS, on_scroll, 1};
 
 typedef struct {
     int action;
@@ -55,6 +55,7 @@ static hotkey_widget hotkey_widgets[] = {
     {HOTKEY_RESIZE_TO_1024, TR_HOTKEY_RESIZE_TO_1024},
     {HOTKEY_SAVE_SCREENSHOT, TR_HOTKEY_SAVE_SCREENSHOT},
     {HOTKEY_SAVE_CITY_SCREENSHOT, TR_HOTKEY_SAVE_CITY_SCREENSHOT},
+    {HOTKEY_SAVE_MINIMAP_SCREENSHOT, TR_HOTKEY_SAVE_MINIMAP_SCREENSHOT},
     {HOTKEY_LOAD_FILE, TR_HOTKEY_LOAD_FILE},
     {HOTKEY_SAVE_FILE, TR_HOTKEY_SAVE_FILE},
     {HOTKEY_HEADER, TR_HOTKEY_HEADER_CITY},
@@ -73,6 +74,8 @@ static hotkey_widget hotkey_widgets[] = {
     {HOTKEY_BUILD_CLONE, TR_HOTKEY_BUILD_CLONE},
     {HOTKEY_COPY_BUILDING_SETTINGS, TR_HOTKEY_COPY_SETTINGS},
     {HOTKEY_PASTE_BUILDING_SETTINGS, TR_HOTKEY_PASTE_SETTINGS},
+    {HOTKEY_MOTHBALL_TOGGLE, TR_HOTKEY_MOTHBALL_TOGGLE},
+    {HOTKEY_STORAGE_ORDER, TR_HOTKEY_SPECIAL_ORDERS},
     {HOTKEY_BUILD_CLEAR_LAND, TR_NONE, 68, 21},
     {HOTKEY_BUILD_VACANT_HOUSE, TR_NONE, 67, 7},
     {HOTKEY_BUILD_ROAD, TR_NONE, GROUP_BUILDINGS, BUILDING_ROAD},
@@ -81,6 +84,7 @@ static hotkey_widget hotkey_widgets[] = {
     {HOTKEY_BUILD_PREFECTURE, TR_NONE, GROUP_BUILDINGS, BUILDING_PREFECTURE},
     {HOTKEY_BUILD_ENGINEERS_POST, TR_NONE, GROUP_BUILDINGS, BUILDING_ENGINEERS_POST},
     {HOTKEY_BUILD_DOCTOR, TR_NONE, GROUP_BUILDINGS, BUILDING_DOCTOR},
+    {HOTKEY_BUILD_BARBER, TR_NONE, GROUP_BUILDINGS, BUILDING_BARBER},
     {HOTKEY_BUILD_GRANARY, TR_NONE, GROUP_BUILDINGS, BUILDING_GRANARY},
     {HOTKEY_BUILD_WAREHOUSE, TR_NONE, GROUP_BUILDINGS, BUILDING_WAREHOUSE},
     {HOTKEY_BUILD_MARKET, TR_NONE, GROUP_BUILDINGS, BUILDING_MARKET},
@@ -116,16 +120,22 @@ static hotkey_widget hotkey_widgets[] = {
     {HOTKEY_SHOW_OVERLAY_PROBLEMS, TR_HOTKEY_SHOW_OVERLAY_PROBLEMS},
     {HOTKEY_SHOW_OVERLAY_FOOD_STOCKS, TR_HOTKEY_SHOW_OVERLAY_FOOD_STOCKS},
     {HOTKEY_SHOW_OVERLAY_ENTERTAINMENT, TR_HOTKEY_SHOW_OVERLAY_ENTERTAINMENT},
+    {HOTKEY_SHOW_OVERLAY_EDUCATION, TR_HOTKEY_SHOW_OVERLAY_EDUCATION},
     {HOTKEY_SHOW_OVERLAY_SCHOOL, TR_HOTKEY_SHOW_OVERLAY_SCHOOL},
     {HOTKEY_SHOW_OVERLAY_LIBRARY, TR_HOTKEY_SHOW_OVERLAY_LIBRARY},
     {HOTKEY_SHOW_OVERLAY_ACADEMY, TR_HOTKEY_SHOW_OVERLAY_ACADEMY},
     {HOTKEY_SHOW_OVERLAY_BARBER, TR_HOTKEY_SHOW_OVERLAY_BARBER},
     {HOTKEY_SHOW_OVERLAY_BATHHOUSE, TR_HOTKEY_SHOW_OVERLAY_BATHHOUSE},
     {HOTKEY_SHOW_OVERLAY_CLINIC, TR_HOTKEY_SHOW_OVERLAY_CLINIC},
+    {HOTKEY_SHOW_OVERLAY_HOSPITAL, TR_HOTKEY_SHOW_OVERLAY_HOSPITAL},
     {HOTKEY_SHOW_OVERLAY_SICKNESS, TR_HOTKEY_SHOW_OVERLAY_SICKNESS},
     {HOTKEY_SHOW_OVERLAY_TAX_INCOME, TR_HOTKEY_SHOW_OVERLAY_TAX_INCOME},
+    {HOTKEY_SHOW_OVERLAY_DESIRABILITY, TR_HOTKEY_SHOW_OVERLAY_DESIRABILITY},
+    {HOTKEY_SHOW_OVERLAY_SENTIMENT, TR_HOTKEY_SHOW_OVERLAY_SENTIMENT},
+    {HOTKEY_SHOW_OVERLAY_MOTHBALL, TR_HOTKEY_SHOW_OVERLAY_MOTHBALL},
     {HOTKEY_SHOW_OVERLAY_RELIGION, TR_HOTKEY_SHOW_OVERLAY_RELIGION},
     {HOTKEY_SHOW_OVERLAY_ROADS, TR_HOTKEY_SHOW_OVERLAY_ROADS},
+    {HOTKEY_SHOW_OVERLAY_LEVY, TR_HOTKEY_SHOW_OVERLAY_LEVY},
     {HOTKEY_HEADER, TR_HOTKEY_HEADER_BOOKMARKS},
     {HOTKEY_GO_TO_BOOKMARK_1, TR_HOTKEY_GO_TO_BOOKMARK_1},
     {HOTKEY_GO_TO_BOOKMARK_2, TR_HOTKEY_GO_TO_BOOKMARK_2},
@@ -195,7 +205,7 @@ static struct {
 
 static void init(void)
 {
-    scrollbar_init(&scrollbar, 0, sizeof(hotkey_widgets) / sizeof(hotkey_widget) - NUM_VISIBLE_OPTIONS);
+    scrollbar_init(&scrollbar, 0, sizeof(hotkey_widgets) / sizeof(hotkey_widget));
 
     for (int i = 0; i < HOTKEY_MAX_ITEMS; i++) {
         hotkey_mapping empty = { KEY_TYPE_NONE, KEY_MOD_NONE, i };
@@ -296,7 +306,9 @@ static void draw_foreground(void)
 static void handle_input(const mouse *m, const hotkeys *h)
 {
     const mouse *m_dialog = mouse_in_dialog(m);
-    if (scrollbar_handle_mouse(&scrollbar, m_dialog)) {
+    if (scrollbar_handle_mouse(&scrollbar, m_dialog, 1)) {
+        data.focus_button = 0;
+        data.bottom_focus_button = 0;
         return;
     }
 
@@ -343,7 +355,7 @@ static void set_hotkey(hotkey_action action, int index, key_type key, key_modifi
                     if (!(test_action == action && test_index == index)) {
                         window_plain_message_dialog_show_with_extra(
                             TR_HOTKEY_DUPLICATE_TITLE, TR_HOTKEY_DUPLICATE_MESSAGE,
-                            hotkey_action_name_for(test_action));
+                            hotkey_action_name_for(test_action), 0);
                     }
                     break;
                 }

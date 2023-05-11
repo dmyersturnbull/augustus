@@ -1,6 +1,5 @@
 #include "config.h"
 
-#include "city/view.h"
 #include "core/calc.h"
 #include "core/config.h"
 #include "core/dir.h"
@@ -83,7 +82,9 @@ static const uint8_t *display_text_scroll_speed(void);
 static const uint8_t *display_text_difficulty(void);
 static const uint8_t *display_text_max_grand_temples(void);
 
-static scrollbar_type scrollbar = { 580, ITEM_Y_OFFSET, ITEM_HEIGHT * NUM_VISIBLE_ITEMS, on_scroll, 4 };
+static scrollbar_type scrollbar = {
+    580, ITEM_Y_OFFSET, ITEM_HEIGHT * NUM_VISIBLE_ITEMS, CHECKBOX_WIDTH, NUM_VISIBLE_ITEMS, on_scroll, 0, 4
+};
 
 enum {
     TYPE_NONE,
@@ -199,8 +200,9 @@ static config_widget all_widgets[CONFIG_PAGES][MAX_WIDGETS] = {
         {TYPE_CHECKBOX, CONFIG_UI_SIDEBAR_INFO, TR_CONFIG_SIDEBAR_INFO},
         {TYPE_CHECKBOX, CONFIG_UI_SMOOTH_SCROLLING, TR_CONFIG_SMOOTH_SCROLLING},
         {TYPE_CHECKBOX, CONFIG_UI_DISABLE_MOUSE_EDGE_SCROLLING, TR_CONFIG_DISABLE_MOUSE_EDGE_SCROLLING},
-        {TYPE_CHECKBOX, CONFIG_UI_WALKER_WAYPOINTS, TR_CONFIG_DRAW_WALKER_WAYPOINTS },
         {TYPE_CHECKBOX, CONFIG_UI_SHOW_WATER_STRUCTURE_RANGE, TR_CONFIG_SHOW_WATER_STRUCTURE_RANGE},
+        {TYPE_CHECKBOX, CONFIG_UI_SHOW_WATER_STRUCTURE_RANGE_HOUSES, TR_CONFIG_SHOW_WATER_STRUCTURE_RANGE_HOUSES},
+        {TYPE_CHECKBOX, CONFIG_UI_SHOW_MARKET_RANGE, TR_CONFIG_SHOW_MARKET_RANGE},
         {TYPE_CHECKBOX, CONFIG_UI_SHOW_CONSTRUCTION_SIZE, TR_CONFIG_SHOW_CONSTRUCTION_SIZE},
         {TYPE_CHECKBOX, CONFIG_UI_HIGHLIGHT_LEGIONS, TR_CONFIG_HIGHLIGHT_LEGIONS},
         {TYPE_CHECKBOX, CONFIG_UI_SHOW_MILITARY_SIDEBAR, TR_CONFIG_SHOW_MILITARY_SIDEBAR},
@@ -209,7 +211,11 @@ static config_widget all_widgets[CONFIG_PAGES][MAX_WIDGETS] = {
         {TYPE_CHECKBOX, CONFIG_UI_DIGIT_SEPARATOR, TR_CONFIG_DIGIT_SEPARATOR},
         {TYPE_CHECKBOX, CONFIG_UI_INVERSE_MAP_DRAG, TR_CONFIG_UI_INVERSE_MAP_DRAG},
         {TYPE_CHECKBOX, CONFIG_UI_MESSAGE_ALERTS, TR_CONFIG_UI_MESSAGE_ALERTS},
-        {TYPE_CHECKBOX, CONFIG_UI_SHOW_GRID_DURING_CONSTRUCTION, TR_CONFIG_UI_SHOW_GRID_DURING_CONSTRUCTION},
+        {TYPE_CHECKBOX, CONFIG_UI_SHOW_GRID, TR_CONFIG_UI_SHOW_GRID},
+        {TYPE_CHECKBOX, CONFIG_UI_SHOW_PARTIAL_GRID_AROUND_CONSTRUCTION, TR_CONFIG_UI_SHOW_PARTIAL_GRID_AROUND_CONSTRUCTION},
+        {TYPE_CHECKBOX, CONFIG_UI_ALWAYS_SHOW_ROTATION_BUTTONS, TR_CONFIG_UI_ALWAYS_SHOW_ROTATION_BUTTONS},
+        {TYPE_CHECKBOX, CONFIG_UI_SHOW_ROAMING_PATH, TR_CONFIG_SHOW_ROAMING_PATH },
+        {TYPE_CHECKBOX, CONFIG_UI_DRAW_CLOUD_SHADOWS, TR_CONFIG_DRAW_CLOUD_SHADOWS },
     },
     { // Difficulty
         {TYPE_NUMERICAL_DESC, RANGE_DIFFICULTY, TR_CONFIG_DIFFICULTY},
@@ -239,6 +245,7 @@ static config_widget all_widgets[CONFIG_PAGES][MAX_WIDGETS] = {
         {TYPE_CHECKBOX, CONFIG_GP_CH_WAREHOUSES_DONT_ACCEPT, TR_CONFIG_NOT_ACCEPTING_WAREHOUSES },
         {TYPE_CHECKBOX, CONFIG_GP_CH_HOUSES_DONT_EXPAND_INTO_GARDENS, TR_CONFIG_HOUSES_DONT_EXPAND_INTO_GARDENS },
         {TYPE_CHECKBOX, CONFIG_GP_CH_ROAMERS_DONT_SKIP_CORNERS, TR_CONFIG_ROAMERS_DONT_SKIP_CORNERS },
+        {TYPE_CHECKBOX, CONFIG_GP_CH_AUTO_KILL_ANIMALS, TR_CONFIG_AUTO_KILL_ANIMALS},
     }
 };
 
@@ -499,7 +506,7 @@ static void set_page(int page)
     for (int i = 0; i < data.page; i++) {
         data.starting_option += data.widgets_per_page[i];
     }
-    scrollbar_init(&scrollbar, 0, data.widgets_per_page[data.page] - NUM_VISIBLE_ITEMS);
+    scrollbar_init(&scrollbar, 0, data.widgets_per_page[page]);
 }
 
 static void init(int page, int show_background_image)
@@ -952,16 +959,20 @@ static int numerical_range_handle_mouse(const mouse *m, int x, int y, int numeri
 static void handle_input(const mouse *m, const hotkeys *h)
 {
     const mouse *m_dialog = mouse_in_dialog(m);
+    data.focus_button = 0;
+
     if (data.active_numerical_range) {
         numerical_range_handle_mouse(m_dialog, NUMERICAL_RANGE_X, 0, data.active_numerical_range);
         return;
     }
-    if (scrollbar_handle_mouse(&scrollbar, m_dialog)) {
+
+    if (scrollbar_handle_mouse(&scrollbar, m_dialog, 1)) {
+        data.page_focus_button = 0;
+        data.bottom_focus_button = 0;
         return;
     }
-    int handled = 0;
-    data.focus_button = 0;
 
+    int handled = 0;
     for (int i = 0; i < NUM_VISIBLE_ITEMS && i < data.widgets_per_page[data.page]; i++) {
         config_widget *w = data.widgets[i + data.starting_option + scrollbar.scroll_position];
         int y = ITEM_Y_OFFSET + ITEM_HEIGHT * i;
@@ -973,6 +984,7 @@ static void handle_input(const mouse *m, const hotkeys *h)
             }
         } else if (w->type == TYPE_SELECT) {
             generic_button *btn = &select_buttons[w->subtype];
+            btn->parameter1 = y + w->y_offset;
             int focus = 0;
             handled |= generic_buttons_handle_mouse(m_dialog, 0, y + w->y_offset, btn, 1, &focus);
             if (focus) {
@@ -1017,12 +1029,12 @@ static void button_hotkeys(int param1, int param2)
     window_hotkey_config_show();
 }
 
-static void button_language_select(int param1, int param2)
+static void button_language_select(int height, int param2)
 {
     const generic_button *btn = &select_buttons[SELECT_LANGUAGE];
     window_select_list_show_text(
-        screen_dialog_offset_x() + btn->x + btn->width - 10,
-        screen_dialog_offset_y() + 45,
+        screen_dialog_offset_x() + btn->x,
+        screen_dialog_offset_y() + height + btn->height,
         data.language_options, data.num_language_options, set_language
     );
 }
@@ -1055,7 +1067,9 @@ static void cancel_values(void)
 
 static int config_change_basic(config_key key)
 {
-    config_set(key, data.config_values[key].new_value);
+    if (key < CONFIG_MAX_ENTRIES) {
+        config_set(key, data.config_values[key].new_value);
+    }
     data.config_values[key].original_value = data.config_values[key].new_value;
     return 1;
 }

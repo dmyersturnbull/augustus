@@ -30,6 +30,7 @@
 #include "figure/movement.h"
 #include "figure/route.h"
 #include "figure/trader.h"
+#include "figure/visited_buildings.h"
 #include "map/routing.h"
 #include "map/routing_path.h"
 #include "scenario/map.h"
@@ -319,7 +320,6 @@ static int get_closest_storage(const figure *f, int x, int y, int city_id, map_p
     exportable[RESOURCE_NONE] = 0;
     importable[RESOURCE_NONE] = 0;
     for (int r = RESOURCE_MIN; r < RESOURCE_MAX; r++) {
-
         exportable[r] = empire_can_export_resource_to_city(city_id, r);
         if (f->trader_amount_bought >= figure_trade_land_trade_units()) {
             exportable[r] = 0;
@@ -337,7 +337,7 @@ static int get_closest_storage(const figure *f, int x, int y, int city_id, map_p
     int min_distance = INFINITE;
     building *min_building = 0;
     for (building *b = building_first_of_type(BUILDING_WAREHOUSE); b; b = b->next_of_type) {
-        if (b->state != BUILDING_STATE_IN_USE || !b->has_road_access || b->distance_from_entry <= 0 ||
+        if (b->state != BUILDING_STATE_IN_USE || b->has_plague || !b->has_road_access || b->distance_from_entry <= 0 ||
             !building_storage_get_permission(BUILDING_STORAGE_PERMISSION_TRADERS, b)) {
             continue;
         }
@@ -383,7 +383,7 @@ static int get_closest_storage(const figure *f, int x, int y, int city_id, map_p
         }
     }
     for (building *b = building_first_of_type(BUILDING_GRANARY); b; b = b->next_of_type) {
-        if (b->state != BUILDING_STATE_IN_USE || !b->has_road_access || b->distance_from_entry <= 0 ||
+        if (b->state != BUILDING_STATE_IN_USE || b->has_plague || !b->has_road_access || b->distance_from_entry <= 0 ||
             !building_storage_get_permission(BUILDING_STORAGE_PERMISSION_TRADERS, b)) {
             continue;
         }
@@ -404,7 +404,7 @@ static int get_closest_storage(const figure *f, int x, int y, int city_id, map_p
                 !empire_can_import_resource_from_city(city_id, resource)) {
                 continue;
             }
-            if (building_granary_resource_amount(RESOURCE_NONE, b) >= 4 * RESOURCE_GRANARY_ONE_LOAD) {
+            if (building_granary_resource_amount(RESOURCE_NONE, b) >= 4 * RESOURCE_ONE_LOAD) {
                 distance_penalty -= 32;
             } else {
                 distance_penalty -= 16;
@@ -427,7 +427,8 @@ static int get_closest_storage(const figure *f, int x, int y, int city_id, map_p
         map_point_store_result(min_building->x + 1, min_building->y + 1, dst);
     } else if (min_building->has_road_access == 1) {
         map_point_store_result(min_building->x, min_building->y, dst);
-    } else if (!map_has_road_access_rotation(min_building->subtype.orientation, min_building->x, min_building->y, 3, dst)) {
+    } else if (!map_has_road_access_rotation(min_building->subtype.orientation,
+        min_building->x, min_building->y, 3, dst)) {
         return 0;
     }
     return min_building->id;
@@ -450,7 +451,7 @@ static void go_to_next_storage(figure *f)
     }
 }
 
-static int trader_image_id()
+static int trader_image_id(void)
 {
     if (scenario_property_climate() == CLIMATE_DESERT) {
         return IMAGE_CAMEL;
@@ -464,7 +465,7 @@ void figure_trade_caravan_action(figure *f)
     int move_speed = trader_bonus_speed();
 
     f->is_ghost = 0;
-    f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
+    f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
     figure_image_increase_offset(f, 12);
     f->cart_image_id = 0;
     switch (f->action_state) {
@@ -566,7 +567,7 @@ void figure_trade_caravan_donkey_action(figure *f)
     int move_speed = trader_bonus_speed();
 
     f->is_ghost = 0;
-    f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
+    f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
     figure_image_increase_offset(f, 12);
     f->cart_image_id = 0;
 
@@ -745,14 +746,8 @@ static int record_dock(figure *ship, int dock_id)
     if (dock->data.dock.trade_ship_id != 0 && dock->data.dock.trade_ship_id != ship->id) {
         return 0;
     }
-    for (int i = 0; i < 10; i++) {
-        if (dock_id == city_buildings_get_working_dock(i)) {
-            ship->building_id |= 1 << i;
-            dock->data.dock.trade_ship_id = ship->id;
-            return 1;
-        }
-    }
-    return 0;
+    ship->last_visited_index = figure_visited_buildings_add(ship->last_visited_index, dock_id);
+    return 1;
 }
 
 void figure_trade_ship_action(figure *f)
@@ -774,7 +769,6 @@ void figure_trade_ship_action(figure *f)
             f->trader_amount_bought = 0;
             f->is_ghost = 1;
             f->wait_ticks++;
-            f->building_id = 0;
             if (f->wait_ticks > 20) {
                 f->wait_ticks = 0;
                 map_point queue_tile;
@@ -961,13 +955,13 @@ void figure_trade_ship_action(figure *f)
     f->image_id = image_group(GROUP_FIGURE_SHIP) + dir;
 }
 
-int figure_trade_land_trade_units()
+int figure_trade_land_trade_units(void)
 {
     int unit = 8;
 
     if (building_monument_working(BUILDING_GRAND_TEMPLE_MERCURY)) {
         int add_unit = 0;
-        int monument_id = building_monument_has_monument(BUILDING_GRAND_TEMPLE_MERCURY);
+        int monument_id = building_monument_get_id(BUILDING_GRAND_TEMPLE_MERCURY);
         building *b = building_get(monument_id);
 
         int pct_workers = calc_percentage(b->num_workers, model_get_building(b->type)->laborers);
@@ -998,7 +992,7 @@ int figure_trade_land_trade_units()
     return unit;
 }
 
-int figure_trade_sea_trade_units()
+int figure_trade_sea_trade_units(void)
 {
     int unit = 12;
     if (building_monument_working(BUILDING_GRAND_TEMPLE_MERCURY)) {
@@ -1032,18 +1026,6 @@ int figure_trade_sea_trade_units()
     }
 
     return unit;
-}
-
-int figure_trader_ship_docked_once_at_dock(figure *ship, int dock_id)
-{
-    for (int i = 0; i < 10; i++) {
-        if (dock_id == city_buildings_get_working_dock(i)) {
-            if (ship->building_id & 1 << i) {
-                return 1;
-            }
-        }
-    }
-    return 0;
 }
 
 // if ship is moored, do not forward to another dock unless it has more than one third of capacity available.

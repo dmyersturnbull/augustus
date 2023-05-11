@@ -34,7 +34,7 @@ static generic_button buttons[] = {
     {20, 0, 0, 0, button_select_option, button_none, 4, 0}
 };
 
-static scrollbar_type scrollbar = { 420, START_Y_OFFSET + 40, 0, on_scroll, 4 };
+static scrollbar_type scrollbar = { 420, START_Y_OFFSET + 40, 0, 400, 0, on_scroll, 0, 4 };
 
 static struct {
     int title;
@@ -79,8 +79,8 @@ static int init(int title, int subtitle, option_menu_item *options, int num_opti
     }
 
     if (!border_image_ids[0]) {
-        border_image_ids[0] = assets_get_image_id("UI_Elements", "Image Border Medium");
-        border_image_ids[1] = assets_get_image_id("UI_Elements", "Image Border Large");
+        border_image_ids[0] = assets_get_image_id("UI", "Image Border Medium");
+        border_image_ids[1] = assets_get_image_id("UI", "Image Border Large");
     }
     return 1;
 }
@@ -101,7 +101,8 @@ static void calculate_visible_options(void)
     buttons[2].width = buttons[3].width = buttons[4].width = data.num_options == data.visible_options ? 430 : 400;
 
     scrollbar.height = Y_OFFSET_PER_OPTION[data.row_size] * data.visible_options;
-    scrollbar_init(&scrollbar, 0, data.num_options - data.visible_options);
+    scrollbar.elements_in_view =  data.visible_options;
+    scrollbar_init(&scrollbar, 0, data.num_options);
     if (data.selected_option > data.visible_options) {
         scrollbar.scroll_position = data.selected_option - data.visible_options;
     }
@@ -153,10 +154,10 @@ static void draw_background(void)
                 Y_OFFSET_PER_OPTION[data.row_size] / 16 - 1);
         }
         text_draw_multiline(translation_for(data.options[i + scrollbar.scroll_position].header),
-            text_x, y_offset + 49, text_width - 4,
+            text_x, y_offset + 49, text_width - 8,
             data.selected_option == i + scrollbar.scroll_position + 1 ? FONT_NORMAL_WHITE : FONT_NORMAL_BLACK, 0);
         text_draw_multiline(translation_for(data.options[i + scrollbar.scroll_position].desc),
-            text_x, y_offset + 69, text_width - 4,
+            text_x, y_offset + 69, text_width - 8,
             data.selected_option == i + scrollbar.scroll_position + 1 ? FONT_NORMAL_WHITE : FONT_NORMAL_BLACK, 0);
 
 
@@ -198,14 +199,14 @@ static void handle_input(const mouse *m, const hotkeys *h)
     if (input_go_back_requested(m, h)) {
         data.close_func(0);
         window_go_back();
+        return;
     }
     const mouse *m_dialog = mouse_in_dialog_with_size(m, data.width_blocks * 16, data.height_blocks * 16);
-    if (scrollbar_handle_mouse(&scrollbar, m_dialog)) {
+    if (scrollbar_handle_mouse(&scrollbar, m_dialog, 1)) {
+        data.focus_button_id = 0;
         return;
     }
-    if (generic_buttons_handle_mouse(m_dialog, 0, 0, buttons, data.visible_options + 2, &data.focus_button_id)) {
-        return;
-    }
+    generic_buttons_handle_mouse(m_dialog, 0, 0, buttons, data.visible_options + 2, &data.focus_button_id);
 }
 
 static void on_scroll(void)

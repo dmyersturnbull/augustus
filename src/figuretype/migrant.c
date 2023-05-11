@@ -77,7 +77,7 @@ static int closest_house_with_room(int x, int y)
     int min_building_id = 0;
     for (building_type type = BUILDING_HOUSE_SMALL_TENT; type <= BUILDING_HOUSE_LUXURY_PALACE; type++) {
         for (building *b = building_first_of_type(type); b; b = b->next_of_type) {
-            if (b->state == BUILDING_STATE_IN_USE && b->house_size &&
+            if (b->state == BUILDING_STATE_IN_USE && b->house_size && !b->has_plague &&
                 b->distance_from_entry > 0 && b->house_population_room > 0) {
                 if (!b->immigrant_figure_id) {
                     int dist = calc_maximum_distance(x, y, b->x, b->y);
@@ -102,7 +102,7 @@ void figure_immigrant_action(figure *f)
 
     f->terrain_usage = TERRAIN_USAGE_ANY;
     f->cart_image_id = 0;
-    if (b->state != BUILDING_STATE_IN_USE || b->immigrant_figure_id != f->id || !b->house_size) {
+    if (b->state != BUILDING_STATE_IN_USE || b->immigrant_figure_id != f->id || !b->house_size || b->has_plague) {
         f->state = FIGURE_STATE_DEAD;
         return;
     }
@@ -121,11 +121,10 @@ void figure_immigrant_action(figure *f)
             f->image_offset = 0;
             f->wait_ticks--;
             if (f->wait_ticks <= 0) {
-                int x_road, y_road;
-                if (map_closest_road_within_radius(b->x, b->y, b->size, 2, &x_road, &y_road)) {
+                if (b->has_road_access) {
                     f->action_state = FIGURE_ACTION_2_IMMIGRANT_ARRIVING;
-                    f->destination_x = x_road;
-                    f->destination_y = y_road;
+                    f->destination_x = b->road_access_x;
+                    f->destination_y = b->road_access_y;
                     f->roam_length = 0;
                 } else {
                     f->state = FIGURE_STATE_DEAD;
@@ -239,7 +238,7 @@ void figure_emigrant_action(figure *f)
 void figure_homeless_action(figure *f)
 {
     figure_image_increase_offset(f, 12);
-    f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
+    f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
 
     switch (f->action_state) {
         case FIGURE_ACTION_150_ATTACK:
@@ -295,7 +294,7 @@ void figure_homeless_action(figure *f)
             if (figure_movement_move_ticks_cross_country(f, 1) == 1) {
                 f->state = FIGURE_STATE_DEAD;
                 building *b = building_get(f->immigrant_building_id);
-                if (f->immigrant_building_id && building_is_house(b->type)) {
+                if (f->immigrant_building_id && building_is_house(b->type) && !b->has_plague) {
                     int max_people = model_get_house(b->subtype.house_level)->max_people;
                     if (b->house_is_merged) {
                         max_people *= 4;

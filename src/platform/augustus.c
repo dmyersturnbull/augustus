@@ -14,6 +14,9 @@
 #include "input/mouse.h"
 #include "input/touch.h"
 #include "platform/arguments.h"
+#ifndef NDEBUG
+#include "platform/debug.h"
+#endif
 #include "platform/file_manager.h"
 #include "platform/joystick.h"
 #include "platform/keyboard_input.h"
@@ -22,6 +25,7 @@
 #include "platform/renderer.h"
 #include "platform/screen.h"
 #include "platform/touch.h"
+#include "window/asset_previewer.h"
 
 #include "tinyfiledialogs/tinyfiledialogs.h"
 
@@ -40,12 +44,6 @@
 
 #if defined(USE_TINYFILEDIALOGS) || defined(__ANDROID__)
 #define SHOW_FOLDER_SELECT_DIALOG
-#endif
-
-#ifdef DRAW_FPS
-#include "graphics/window.h"
-#include "graphics/graphics.h"
-#include "graphics/text.h"
 #endif
 
 #define INTPTR(d) (*(int*)(d))
@@ -147,53 +145,19 @@ static void platform_per_frame_callback(void)
 }
 #endif
 
+static void run_and_draw(void)
+{
 #ifdef DRAW_FPS
-static struct {
-    int frame_count;
-    int last_fps;
-    Uint32 last_update_time;
-} fps = { 0, 0, 0 };
-
-static void run_and_draw(void)
-{
-    time_millis time_before_run = SDL_GetTicks();
-    time_set_millis(time_before_run);
-
-    game_run();
-    Uint32 time_between_run_and_draw = SDL_GetTicks();
-    game_draw();
-    Uint32 time_after_draw = SDL_GetTicks();
-
-    fps.frame_count++;
-    if (time_after_draw - fps.last_update_time > 1000) {
-        fps.last_fps = fps.frame_count;
-        fps.last_update_time = time_after_draw;
-        fps.frame_count = 0;
-    }
-    if (window_is(WINDOW_CITY) || window_is(WINDOW_CITY_MILITARY) || window_is(WINDOW_SLIDING_SIDEBAR)) {
-        int y_offset = 24;
-        int y_offset_text = y_offset + 5;
-        graphics_fill_rect(0, y_offset, 100, 20, COLOR_WHITE);
-        text_draw_number(fps.last_fps,
-            'f', "", 5, y_offset_text, FONT_NORMAL_PLAIN, COLOR_FONT_RED);
-        text_draw_number(time_between_run_and_draw - time_before_run,
-            'g', "", 40, y_offset_text, FONT_NORMAL_PLAIN, COLOR_FONT_RED);
-        text_draw_number(time_after_draw - time_between_run_and_draw,
-            'd', "", 70, y_offset_text, FONT_NORMAL_PLAIN, COLOR_FONT_RED);
-    }
-    platform_renderer_render();
-}
+    debug_run_and_draw();
 #else
-static void run_and_draw(void)
-{
     time_set_millis(SDL_GetTicks());
 
     game_run();
     game_draw();
 
     platform_renderer_render();
-}
 #endif
+}
 
 static void handle_mouse_button(SDL_MouseButtonEvent *event, int is_down)
 {
@@ -238,6 +202,12 @@ static void handle_window_event(SDL_WindowEvent *event, int *window_active)
             SDL_Log("Window %d hidden", (unsigned int) event->windowID);
             *window_active = 0;
             break;
+
+        case SDL_WINDOWEVENT_EXPOSED:
+            SDL_Log("Window %d exposed", (unsigned int) event->windowID);
+            window_invalidate();
+            break;
+
         default:
             break;
 
@@ -283,6 +253,11 @@ static void handle_event(SDL_Event *event)
         case SDL_KEYUP:
             platform_handle_key_up(&event->key);
             break;
+#if defined(__ANDROID__) && SDL_VERSION_ATLEAST(2, 24, 0)
+        case SDL_TEXTEDITING:
+            platform_handle_editing_text(&event->edit);
+            break;
+#endif
         case SDL_TEXTINPUT:
             platform_handle_text(&event->text);
             break;
@@ -411,11 +386,17 @@ static int init_sdl(void)
 #endif
 
     if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) != 0) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not initialize SDL: %s", SDL_GetError());
-        return 0;
+        // Try starting SDL without joystick support
+        if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) != 0) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Could not initialize SDL: %s", SDL_GetError());
+            return 0;
+        } else {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Could not enable joystick support");
+        }
+    } else {
+        platform_joystick_init();
     }
     SDL_SetEventFilter(handle_event_immediate, 0);
-    platform_joystick_init();
 #if SDL_VERSION_ATLEAST(2, 0, 10)
     SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
     SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
@@ -465,8 +446,8 @@ static const char *ask_for_data_dir(int again)
         if (!result) {
             return NULL;
         }
-        }
-    return tinyfd_selectFolderDialog("Please select your Caesar 3 folder", NULL);
+    }
+    return tinyfd_selectFolderDialog("Please select your Caesar 3 folder");
 #endif
     }
 #endif
@@ -518,7 +499,7 @@ static int pre_init(const char *custom_data_dir)
         if (platform_file_manager_set_base_path(user_dir) && game_pre_init()) {
             pref_save_data_dir(user_dir);
 #ifdef __ANDROID__
-            android_toast_message("C3 files found. Path saved.");
+            SDL_AndroidShowToast("C3 files found. Path saved.", 0, 0, 0, 0);
 #endif
             return 1;
         }
@@ -542,7 +523,7 @@ static int pre_init(const char *custom_data_dir)
     return 0;
 }
 
-static void setup(const julius_args *args)
+static void setup(const augustus_args *args)
 {
     system_setup_crash_handler();
     setup_logging();
@@ -589,8 +570,10 @@ static void setup(const julius_args *args)
     system_init_cursors(config_get(CONFIG_SCREEN_CURSOR_SCALE));
 
     time_set_millis(SDL_GetTicks());
+    
+    int result = args->launch_asset_previewer ? window_asset_previewer_show() : game_init();
 
-    if (!game_init()) {
+    if (!result) {
         SDL_Log("Exiting: game init failed");
         exit_with_status(2);
     }
@@ -601,7 +584,7 @@ static void setup(const julius_args *args)
 
 int main(int argc, char **argv)
 {
-    julius_args args;
+    augustus_args args;
     platform_parse_arguments(argc, argv, &args);
 
     setup(&args);

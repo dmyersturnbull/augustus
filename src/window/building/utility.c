@@ -2,6 +2,7 @@
 
 #include "building/building.h"
 #include "building/roadblock.h"
+#include "city/finance.h"
 #include "core/image.h"
 #include "graphics/generic_button.h"
 #include "graphics/image.h"
@@ -12,7 +13,7 @@
 #include "map/water_supply.h"
 #include "translation/translation.h"
 #include "window/building_info.h"
-
+#include "window/building/figures.h"
 
 static void go_to_orders(int param1, int param2);
 static void toggle_figure_state(int index, int param2);
@@ -139,7 +140,7 @@ void window_building_draw_roadblock(building_info_context *c)
     window_building_play_sound(c, "wavs/prefecture.wav");
     outer_panel_draw(c->x_offset, c->y_offset, c->width_blocks, c->height_blocks);
     lang_text_draw_centered(28, 115, c->x_offset, c->y_offset + 10, 16 * c->width_blocks, FONT_LARGE_BLACK);
-    window_building_draw_description_from_tr_string_at(c, TR_BUILDING_ROADBLOCK_DESC, 96);
+    window_building_draw_description_at(c, 96, CUSTOM_TRANSLATION, TR_BUILDING_ROADBLOCK_DESC);
 }
 
 void window_building_draw_roadblock_foreground(building_info_context *c)
@@ -178,7 +179,6 @@ void window_building_draw_roadblock_orders_foreground(building_info_context *c)
         image_draw(image_group(ids[i * 2]) + 4, c->x_offset + 32, y_offset + 46 + 32 * i, COLOR_MASK_NONE, SCALE_NONE);
         image_draw(image_group(ids[i * 2 + 1]) + 4, c->x_offset + 64, y_offset + 46 + 32 * i,
             COLOR_MASK_NONE, SCALE_NONE);
-       // lang_text_draw(23, resource, c->x_offset + 72, y_offset + 50 + 22 * i, FONT_NORMAL_WHITE);
         button_border_draw(c->x_offset + 180, y_offset + 50 + 32 * i, 210, 22, data.figure_focus_button_id == i + 1);
         int state = building_roadblock_get_permission(i + 1, b);
         if (state) {
@@ -204,7 +204,16 @@ void window_building_draw_garden_gate(building_info_context *c)
     window_building_play_sound(c, "wavs/garden.wav");
     outer_panel_draw(c->x_offset, c->y_offset, c->width_blocks, c->height_blocks);
     text_draw_centered(translation_for(TR_BUILDING_GARDEN_WALL_GATE), c->x_offset, c->y_offset + 10, 16 * c->width_blocks, FONT_LARGE_BLACK, 0);
-    window_building_draw_description_from_tr_string_at(c, TR_BUILDING_GARDEN_WALL_GATE_DESC, 96);
+    window_building_draw_description_at(c, 96, CUSTOM_TRANSLATION, TR_BUILDING_GARDEN_WALL_GATE_DESC);
+}
+
+void window_building_draw_palisade_gate(building_info_context *c)
+{
+    c->help_id = 0;
+    window_building_play_sound(c, "wavs/gatehouse.wav");
+    outer_panel_draw(c->x_offset, c->y_offset, c->width_blocks, c->height_blocks);
+    text_draw_centered(translation_for(TR_BUILDING_PALISADE_GATE), c->x_offset, c->y_offset + 10, 16 * c->width_blocks, FONT_LARGE_BLACK, 0);
+    window_building_draw_description_at(c, 96, CUSTOM_TRANSLATION, TR_BUILDING_PALISADE_GATE_DESC);
 }
 
 void window_building_draw_garden_gate_foreground(building_info_context *c)
@@ -339,6 +348,18 @@ void window_building_draw_native_meeting(building_info_context *c)
 void window_building_draw_native_crops(building_info_context *c)
 {
     draw_native(c, 133);
+}
+
+void window_building_draw_highway(building_info_context *c)
+{
+    //c->help_id = 0;
+    //window_building_play_sound(c, "wavs/aquaduct.wav");
+    window_building_prepare_figure_list(c);
+    outer_panel_draw(c->x_offset, c->y_offset, c->width_blocks, c->height_blocks);
+    lang_text_draw_centered(CUSTOM_TRANSLATION, TR_BUILDING_HIGHWAY, c->x_offset, c->y_offset + 10, BLOCK_SIZE * c->width_blocks, FONT_LARGE_BLACK);
+    window_building_draw_figure_list(c);
+    window_building_draw_description_at(c, BLOCK_SIZE * c->height_blocks - 150, CUSTOM_TRANSLATION, TR_BUILDING_HIGHWAY_DESC);
+    window_building_draw_levy(HIGHWAY_LEVY_MONTHLY, c->x_offset - 270, c->y_offset + BLOCK_SIZE * c->height_blocks - 110);
 }
 
 void toggle_figure_state(int index, int param2)

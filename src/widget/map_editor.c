@@ -1,13 +1,18 @@
 #include "map_editor.h"
 
+#include "assets/assets.h"
 #include "city/view.h"
+#include "city/warning.h"
 #include "core/config.h"
+#include "core/lang.h"
+#include "core/string.h"
 #include "editor/tool.h"
 #include "graphics/graphics.h"
 #include "graphics/image.h"
 #include "graphics/menu.h"
-#include "graphics/window.h"
 #include "graphics/panel.h"
+#include "graphics/renderer.h"
+#include "graphics/window.h"
 #include "input/scroll.h"
 #include "input/zoom.h"
 #include "map/figure.h"
@@ -17,6 +22,7 @@
 #include "map/property.h"
 #include "sound/city.h"
 #include "sound/effect.h"
+#include "translation/translation.h"
 #include "widget/city_figure.h"
 #include "widget/map_editor_pause_menu.h"
 #include "widget/map_editor_tool.h"
@@ -69,6 +75,13 @@ static void draw_footprint(int x, int y, int grid_offset)
         map_image_set(grid_offset, image_id);
     }
     image_draw_isometric_footprint_from_draw_tile(image_id, x, y, color_mask, draw_context.scale);
+    if (config_get(CONFIG_UI_SHOW_GRID) && draw_context.scale <= 2.0f) {
+        static int grid_id = 0;
+        if (!grid_id) {
+            grid_id = assets_get_image_id("UI", "Grid_Full");
+        }
+        image_draw(grid_id, x, y, COLOR_GRID, draw_context.scale);
+    }
 }
 
 static void draw_top(int x, int y, int grid_offset)
@@ -93,11 +106,18 @@ static void draw_flags(int x, int y, int grid_offset)
     }
 }
 
-static void set_city_clip_rectangle(void)
+static void display_zoom_warning(int zoom)
 {
-    int x, y, width, height;
-    city_view_get_viewport(&x, &y, &width, &height);
-    graphics_set_clip_rectangle(x, y, width, height);
+    static uint8_t zoom_string[100];
+    static int warning_id;
+    if (!*zoom_string) {
+        uint8_t *cursor = string_copy(lang_get_string(CUSTOM_TRANSLATION, TR_ZOOM), zoom_string, 100);
+        string_copy(string_from_ascii(" "), cursor, (int) (cursor - zoom_string));
+    }
+    int position = string_length(lang_get_string(CUSTOM_TRANSLATION, TR_ZOOM)) + 1;
+    position += string_from_int(zoom_string + position, zoom, 0);
+    string_copy(string_from_ascii("%"), zoom_string + position, 100 - position);
+    warning_id = city_warning_show_custom(zoom_string, warning_id);
 }
 
 static void update_zoom_level(void)
@@ -108,6 +128,7 @@ static void update_zoom_level(void)
     if (zoom_update_value(&zoom, city_view_get_max_scale(), &offset)) {
         city_view_set_scale(zoom);
         city_view_set_camera_from_pixel_position(offset.x, offset.y);
+        display_zoom_warning(zoom);
         sound_city_decay_views();
     }
 }
@@ -121,8 +142,8 @@ void widget_map_editor_draw(void)
     int x, y, width, height;
     city_view_get_viewport(&x, &y, &width, &height);
     graphics_fill_rect(x, y, width, height, COLOR_BLACK);
-    city_view_foreach_map_tile(draw_footprint);
-    city_view_foreach_valid_map_tile(draw_flags, draw_top, 0);
+    city_view_foreach_valid_map_tile(draw_footprint);
+    city_view_foreach_valid_map_tile_row(draw_flags, draw_top, 0);
     map_editor_tool_draw(&data.current_tile);
     graphics_reset_clip_rectangle();
 }
@@ -338,7 +359,7 @@ void widget_map_editor_handle_input(const mouse *m, const hotkeys *h)
     scroll_map(m);
 
     if (m->is_touch) {
-        zoom_map(m);
+        zoom_map(m, city_view_get_scale());
         handle_touch();
     } else {
         if (m->right.went_down && input_coords_in_map(m->x, m->y) && !editor_tool_is_active()) {
@@ -367,7 +388,7 @@ void widget_map_editor_handle_input(const mouse *m, const hotkeys *h)
 
     map_tile *tile = &data.current_tile;
     update_city_view_coords(m->x, m->y, tile);
-    zoom_map(m);
+    zoom_map(m, city_view_get_scale());
 
     if (tile->grid_offset) {
         if (m->left.went_down) {

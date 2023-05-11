@@ -7,7 +7,6 @@
 #include "core/time.h"
 #include "game/settings.h"
 #include "game/system.h"
-#include "graphics/graphics.h"
 #include "graphics/renderer.h"
 #include "graphics/screen.h"
 #include "sound/device.h"
@@ -16,7 +15,7 @@
 
 #include "pl_mpeg/pl_mpeg.h"
 
-#include "string.h"
+#include <string.h>
 
 typedef enum {
     VIDEO_TYPE_NONE = 0,
@@ -89,7 +88,7 @@ static int load_mpg(const char *filename)
     static char mpg_filename[FILE_NAME_MAX];
     strncpy(mpg_filename, filename, FILE_NAME_MAX - 1);
     file_change_extension(mpg_filename, "mpg");
-    if (strncmp(mpg_filename, "smk/", 4) == 0) {
+    if (strncmp(mpg_filename, "smk/", 4) == 0 || strncmp(mpg_filename, "smk\\", 4) == 0) {
         mpg_filename[0] = 'm';
         mpg_filename[1] = 'p';
         mpg_filename[2] = 'g';
@@ -98,7 +97,7 @@ static int load_mpg(const char *filename)
     if (!path) {
         return 0;
     }
-    FILE *mpg = file_open(mpg_filename, "rb");
+    FILE *mpg = file_open(path, "rb");
     data.plm = plm_create_with_file(mpg, 1);
 
     if (!data.plm) {
@@ -291,7 +290,7 @@ static void get_next_frame(void)
             }
         }
     } else {
-        plm_decode(data.plm, (now_millis - data.video.start_render_millis) / 1000.0);
+        plm_decode(data.plm, (now_millis - data.video.start_render_millis + 1) / 1000.0);
         data.video.start_render_millis = now_millis;
         if (plm_has_ended(data.plm)) {
             close_decoder();
@@ -338,8 +337,9 @@ void video_draw(int x_offset, int y_offset)
     get_next_frame();
     if (data.video.draw_frame) {
         update_video_frame();
+        data.video.draw_frame = 0;
     }
-    graphics_renderer()->draw_custom_image(CUSTOM_IMAGE_VIDEO, x_offset, y_offset, 1.0f);
+    graphics_renderer()->draw_custom_image(CUSTOM_IMAGE_VIDEO, x_offset, y_offset, 1.0f, 0);
 }
 
 void video_draw_fullscreen(void)
@@ -369,5 +369,6 @@ void video_draw_fullscreen(void)
         y = (int) ((s_height - data.video.height / scale) / 2 * scale);
     }
 
-    graphics_renderer()->draw_custom_image(CUSTOM_IMAGE_VIDEO, x, y, scale);
+    graphics_renderer()->clear_screen();
+    graphics_renderer()->draw_custom_image(CUSTOM_IMAGE_VIDEO, x, y, scale, 0);
 }

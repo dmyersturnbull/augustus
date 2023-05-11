@@ -35,7 +35,8 @@ enum {
     OVERLAY_MOTHBALL = 35,
     OVERLAY_ENEMY = 36,
     OVERLAY_WAREHOUSE = 37,
-    OVERLAY_SICKNESS = 38
+    OVERLAY_SICKNESS = 38,
+    OVERLAY_EFFICIENCY = 39,
 };
 
 void game_state_init(void);
@@ -43,6 +44,8 @@ void game_state_init(void);
 int game_state_is_paused(void);
 
 void game_state_toggle_paused(void);
+
+void game_state_pause(void);
 
 void game_state_unpause(void);
 

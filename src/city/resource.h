@@ -6,16 +6,16 @@
 
 #define FOOD_PER_SOLDIER_MONTHLY 4
 #define FOOD_PER_TRADER_MONTHLY 10
-#define RESOURCE_GRANARY_ONE_LOAD 100
+#define RESOURCE_ONE_LOAD 100
 
 typedef struct {
     int size;
-    int items[RESOURCE_MAX];
+    resource_type items[RESOURCE_MAX];
 } resource_list;
 
 int city_resource_count_food_on_granaries(resource_type food);
 int city_resource_count(resource_type resource);
-int city_resource_get_amount_including_granaries(int resource, int amount, int *checked_granaries);
+int city_resource_get_amount_including_granaries(resource_type resource, int amount, int *checked_granaries);
 
 const resource_list *city_resource_get_available(void);
 
@@ -53,8 +53,6 @@ void city_resource_toggle_stockpiled(resource_type resource);
 int city_resource_is_mothballed(resource_type resource);
 void city_resource_toggle_mothballed(resource_type resource);
 
-int city_resource_has_workshop_with_room(int workshop_type);
-
 void city_resource_add_produced_to_granary(int amount);
 void city_resource_add_to_granary(resource_type food, int amount);
 void city_resource_remove_from_granary(resource_type food, int amount);
@@ -64,11 +62,9 @@ void city_resource_remove_from_warehouse(resource_type resource, int amount);
 void city_resource_calculate_warehouse_stocks(void);
 
 void city_resource_determine_available(void);
-int city_resource_ceres_temple_food(void);
+resource_type city_resource_ceres_temple_food(void);
 
 void city_resource_calculate_food_stocks_and_supply_wheat(void);
-
-void city_resource_calculate_workshop_stocks(void);
 
 void city_resource_consume_food(void);
 

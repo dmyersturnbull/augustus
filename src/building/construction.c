@@ -112,6 +112,19 @@ int building_construction_type_can_cycle(building_type type)
     return 0;
 }
 
+int building_construction_type_num_cycles(building_type type)
+{
+    for (int i = 0; i < BUILDING_CYCLES; i++) {
+        int size = building_cycles[i].size;
+        for (int j = 0; j < size; j++) {
+            if (building_cycles[i].array[j] == type) {
+                return size * building_cycles[i].rotations_to_next;
+            }
+        }
+    }
+    return 1;
+}
+
 int building_construction_cycle_forward(void)
 {
     if (data.type == BUILDING_NONE) {
@@ -221,7 +234,7 @@ static int place_houses(int measure_only, int x_start, int y_start, int x_end, i
     if (!measure_only) {
         building_construction_warning_check_food_stocks(BUILDING_HOUSE_VACANT_LOT);
         if (needs_road_warning) {
-            city_warning_show(WARNING_HOUSE_TOO_FAR_FROM_ROAD);
+            city_warning_show(WARNING_HOUSE_TOO_FAR_FROM_ROAD, NEW_WARNING_SLOT);
         }
         map_routing_update_land();
         window_invalidate();
@@ -464,6 +477,9 @@ int building_construction_can_rotate(void)
 
 void building_construction_set_type(building_type type)
 {
+    if (type != data.type) {
+        building_rotation_remove_rotation();
+    }
     data.type = type;
     data.sub_type = BUILDING_NONE;
     data.in_progress = 0;
@@ -493,6 +509,7 @@ void building_construction_set_type(building_type type)
                 break;
             case BUILDING_MARBLE_QUARRY:
             case BUILDING_IRON_MINE:
+            case BUILDING_GOLD_MINE:
                 data.required_terrain.rock = 1;
                 break;
             case BUILDING_TIMBER_YARD:
@@ -516,6 +533,9 @@ void building_construction_set_type(building_type type)
                 break;
         }
     }
+    if (building_construction_can_rotate()) {
+        building_rotation_setup_rotation();
+    }
 }
 
 void building_construction_clear_type(void)
@@ -523,6 +543,8 @@ void building_construction_clear_type(void)
     data.cost_preview = 0;
     data.sub_type = BUILDING_NONE;
     data.type = BUILDING_NONE;
+    data.in_progress = 0;
+    building_rotation_remove_rotation();
 }
 
 building_type building_construction_type(void)
@@ -564,6 +586,10 @@ int building_construction_in_progress(void)
 
 void building_construction_start(int x, int y, int grid_offset)
 {
+    if (data.type == BUILDING_HIGHWAY) {
+        building_construction_offset_start_from_orientation(&x, &y, 2);
+        grid_offset = map_grid_offset(x, y);
+    }
     data.start.grid_offset = grid_offset;
     data.start.x = data.end.x = x;
     data.start.y = data.end.y = y;
@@ -585,6 +611,9 @@ void building_construction_start(int x, int y, int grid_offset)
                 can_start = map_routing_calculate_distances_for_building(
                     ROUTED_BUILDING_WALL, data.start.x, data.start.y);
                 break;
+            case BUILDING_HIGHWAY:
+                can_start = map_routing_calculate_distances_for_building(
+                    ROUTED_BUILDING_HIGHWAY, data.start.x, data.start.y);
             default:
                 break;
         }
@@ -629,20 +658,19 @@ int building_construction_is_updatable(void)
         case BUILDING_GARDENS:
         case BUILDING_HOUSE_VACANT_LOT:
         case BUILDING_PALISADE:
+        case BUILDING_HIGHWAY:
             return 1;
         default:
             return 0;
     }
 }
 
-
 void building_construction_cancel(void)
 {
     map_property_clear_constructing_and_deleted();
     if (data.in_progress && building_construction_is_updatable()) {
-        if (building_construction_is_updatable()) {
-            game_undo_restore_map(1);
-        }
+        game_undo_restore_building_state();
+        game_undo_restore_map(1);
         data.in_progress = 0;
         data.cost_preview = 0;
     } else {
@@ -651,10 +679,36 @@ void building_construction_cancel(void)
     building_rotation_reset_rotation();
 }
 
+static int should_mark_for_construction(building_type type)
+{
+    if (type == BUILDING_SENATE_UPGRADED && city_buildings_has_senate()) {
+        return 0;
+    } else if (type == BUILDING_CITY_MINT && (city_buildings_has_city_mint() || !city_buildings_has_senate())) {
+        return 0;
+    } else if (type == BUILDING_BARRACKS && city_buildings_has_barracks() && 
+        !config_get(CONFIG_GP_CH_MULTIPLE_BARRACKS)) {
+        return 0;
+    } else if (type == BUILDING_MESS_HALL && city_buildings_has_mess_hall()) {
+        return 0;
+    } else if (building_monument_get_id(type)) {
+        return 0;
+    } else if (building_monument_is_grand_temple(type) &&
+        building_monument_count_grand_temples() >= config_get(CONFIG_GP_CH_MAX_GRAND_TEMPLES)) {
+        return 0;
+    } else if (type == BUILDING_AQUEDUCT) {
+        return 0;
+    }
+    return 1;
+}
+
 void building_construction_update(int x, int y, int grid_offset)
 {
     building_type type = building_construction_type();
     if (grid_offset) {
+        if (type == BUILDING_HIGHWAY) {
+            building_construction_offset_start_from_orientation(&x, &y, 2);
+            grid_offset = map_grid_offset(x, y);
+        }
         data.end.x = x;
         data.end.y = y;
         data.end.grid_offset = grid_offset;
@@ -686,6 +740,12 @@ void building_construction_update(int x, int y, int grid_offset)
         if (items_placed >= 0) {
             current_cost *= items_placed;
         }
+    } else if (type == BUILDING_HIGHWAY) {
+        int items_placed = building_construction_place_highway(1, data.start.x, data.start.y, x, y);
+        if (items_placed >= 0) {
+            current_cost *= items_placed;
+            current_cost /= 4; // Highway special case: cost is 100dn per 2x2 tiles, so it's 1/4 the price per tile
+        }
     } else if (type == BUILDING_PLAZA) {
         int items_placed = place_plaza(data.start.x, data.start.y, x, y);
         if (items_placed >= 0) {
@@ -712,7 +772,7 @@ void building_construction_update(int x, int y, int grid_offset)
             current_cost *= items_placed;
         }
     } else if (type == BUILDING_HEDGE_DARK || type == BUILDING_HEDGE_LIGHT) {
-        int items_placed = plot_draggable_building(data.start.x, data.start.y, x, y, 0);
+        int items_placed = plot_draggable_building(data.start.x, data.start.y, x, y, 1);
         if (items_placed >= 0) {
             current_cost *= items_placed;
         }
@@ -742,7 +802,7 @@ void building_construction_update(int x, int y, int grid_offset)
                 current_cost *= items_placed;
             }
     } else if (type == BUILDING_PALISADE) {
-        int items_placed = plot_draggable_building(data.start.x, data.start.y, x, y, 0);
+        int items_placed = plot_draggable_building(data.start.x, data.start.y, x, y, 1);
         if (items_placed >= 0) {
             current_cost *= items_placed;
         }
@@ -796,26 +856,15 @@ void building_construction_update(int x, int y, int grid_offset)
             !city_buildings_has_hippodrome()) {
             mark_construction(x, y, 5, TERRAIN_ALL, 0);
         }
-    } else if (type == BUILDING_SHIPYARD || type == BUILDING_WHARF) {
-        if (!map_water_determine_orientation_size2(x, y, 1, 0, 0)) {
+    } else if (type == BUILDING_SHIPYARD || type == BUILDING_WHARF || type == BUILDING_DOCK) {
+        if (!map_water_determine_orientation(x, y, building_properties_for_type(type)->size, 1, 0, 0, 1, 0)) {
             data.draw_as_constructing = 1;
         }
-    } else if (type == BUILDING_DOCK) {
-        if (!map_water_determine_orientation_size3(x, y, 1, 0, 0)) {
-            data.draw_as_constructing = 1;
-        }
-    } else if (data.required_terrain.meadow || data.required_terrain.rock || data.required_terrain.tree ||
+    } if (data.required_terrain.meadow || data.required_terrain.rock || data.required_terrain.tree ||
         data.required_terrain.water || data.required_terrain.wall || data.required_terrain.distant_water) {
         // never mark as constructing
     } else {
-        if (!(type == BUILDING_SENATE_UPGRADED && city_buildings_has_senate()) &&
-            !(type == BUILDING_BARRACKS && city_buildings_has_barracks() &&
-            !config_get(CONFIG_GP_CH_MULTIPLE_BARRACKS)) &&
-            !(type == BUILDING_DISTRIBUTION_CENTER_UNUSED && city_buildings_has_distribution_center()) &&
-            !(type == BUILDING_MESS_HALL && city_buildings_has_mess_hall()) &&
-            !building_monument_has_monument(type) &&
-            !(building_monument_is_grand_temple(type) &&
-            building_monument_count_grand_temples() >= config_get(CONFIG_GP_CH_MAX_GRAND_TEMPLES))) {
+        if (should_mark_for_construction(type)) {
             int size = building_properties_for_type(type)->size;
             mark_construction(x, y, size, TERRAIN_ALL, 0);
         }
@@ -849,6 +898,15 @@ static figure_type nearby_enemy_type(int x_start, int y_start, int x_end, int y_
     return FIGURE_NONE;
 }
 
+void building_construction_offset_start_from_orientation(int *x, int *y, int size)
+{
+    switch (city_view_orientation()) {
+        case DIR_2_RIGHT: *x = *x - size + 1; break;
+        case DIR_4_BOTTOM: *x = *x - size + 1; *y = *y - size + 1; break;
+        case DIR_6_LEFT: *y = *y - size + 1; break;
+    }
+}
+
 void building_construction_place(void)
 {
     data.cost_preview = 0;
@@ -864,14 +922,14 @@ void building_construction_place(void)
     }
     if (city_finance_out_of_money()) {
         map_property_clear_constructing_and_deleted();
-        city_warning_show(WARNING_OUT_OF_MONEY);
+        city_warning_show(WARNING_OUT_OF_MONEY, NEW_WARNING_SLOT);
         return;
     }
 
     figure_type enemy_type = nearby_enemy_type(x_start, y_start, x_end, y_end);
 
     if (type != BUILDING_CLEAR_LAND && enemy_type != FIGURE_NONE) {
-        if (type == BUILDING_WALL || type == BUILDING_ROAD || type == BUILDING_AQUEDUCT) {
+        if (type == BUILDING_WALL || type == BUILDING_ROAD || type == BUILDING_AQUEDUCT || type == BUILDING_HIGHWAY) {
             game_undo_restore_map(0);
         } else if (type == BUILDING_PLAZA || type == BUILDING_GARDENS || building_is_connectable(type)) {
             game_undo_restore_map(1);
@@ -880,7 +938,7 @@ void building_construction_place(void)
         } else {
             map_property_clear_constructing_and_deleted();
         }
-        city_warning_show(enemy_type == FIGURE_WOLF ? WARNING_WOLF_NEARBY : WARNING_ENEMY_NEARBY);
+        city_warning_show(enemy_type == FIGURE_WOLF ? WARNING_WOLF_NEARBY : WARNING_ENEMY_NEARBY, NEW_WARNING_SLOT);
         return;
     }
 
@@ -900,6 +958,9 @@ void building_construction_place(void)
         placement_cost *= building_construction_place_wall(0, x_start, y_start, x_end, y_end);
     } else if (type == BUILDING_ROAD) {
         placement_cost *= building_construction_place_road(0, x_start, y_start, x_end, y_end);
+    } else if (type == BUILDING_HIGHWAY) {
+        placement_cost *= building_construction_place_highway(0, x_start, y_start, x_end, y_end);
+        placement_cost /= 4; // Highway special case: cost is 100dn per 2x2 tiles, so it's 1/4 the price per tile
     } else if (type == BUILDING_PLAZA) {
         placement_cost *= place_plaza(x_start, y_start, x_end, y_end);
     } else if (type == BUILDING_GARDENS) {
@@ -908,21 +969,21 @@ void building_construction_place(void)
     } else if (type == BUILDING_LOW_BRIDGE) {
         int length = map_bridge_add(x_end, y_end, 0);
         if (length <= 1) {
-            city_warning_show(WARNING_SHORE_NEEDED);
+            city_warning_show(WARNING_SHORE_NEEDED, NEW_WARNING_SLOT);
             return;
         }
         placement_cost *= length;
     } else if (type == BUILDING_SHIP_BRIDGE) {
         int length = map_bridge_add(x_end, y_end, 1);
         if (length <= 1) {
-            city_warning_show(WARNING_SHORE_NEEDED);
+            city_warning_show(WARNING_SHORE_NEEDED, NEW_WARNING_SLOT);
             return;
         }
         placement_cost *= length;
     } else if (type == BUILDING_AQUEDUCT) {
         int cost;
         if (!building_construction_place_aqueduct(x_start, y_start, x_end, y_end, &cost)) {
-            city_warning_show(WARNING_CLEAR_LAND_NEEDED);
+            city_warning_show(WARNING_CLEAR_LAND_NEEDED, NEW_WARNING_SLOT);
             return;
         }
         placement_cost = cost;
@@ -932,7 +993,7 @@ void building_construction_place(void)
         struct reservoir_info info;
         if (!place_reservoir_and_aqueducts(0, x_start, y_start, x_end, y_end, &info)) {
             map_property_clear_constructing_and_deleted();
-            city_warning_show(WARNING_CLEAR_LAND_NEEDED);
+            city_warning_show(WARNING_CLEAR_LAND_NEEDED, NEW_WARNING_SLOT);
             return;
         }
         if (info.place_reservoir_at_start == PLACE_RESERVOIR_YES) {
@@ -940,14 +1001,14 @@ void building_construction_place(void)
             game_undo_add_building(reservoir);
             map_building_tiles_add(reservoir->id, x_start - 1, y_start - 1, 3,
                 image_group(GROUP_BUILDING_RESERVOIR), TERRAIN_BUILDING);
-            map_aqueduct_set(map_grid_offset(x_start - 1, y_start - 1), 0);
+            map_aqueduct_remove(map_grid_offset(x_start - 1, y_start - 1));
         }
         if (info.place_reservoir_at_end == PLACE_RESERVOIR_YES) {
             building *reservoir = building_create(BUILDING_RESERVOIR, x_end - 1, y_end - 1);
             game_undo_add_building(reservoir);
             map_building_tiles_add(reservoir->id, x_end - 1, y_end - 1, 3,
                 image_group(GROUP_BUILDING_RESERVOIR), TERRAIN_BUILDING);
-            map_aqueduct_set(map_grid_offset(x_end - 1, y_end - 1), 0);
+            map_aqueduct_remove(map_grid_offset(x_end - 1, y_end - 1));
             if (!map_terrain_exists_tile_in_area_with_type(x_start - 2, y_start - 2, 5, TERRAIN_WATER)
                 && info.place_reservoir_at_start == PLACE_RESERVOIR_NO) {
                 building_construction_warning_check_reservoir(BUILDING_RESERVOIR);
@@ -992,17 +1053,8 @@ void building_construction_place(void)
         return;
     }
 
-    if (data.type == BUILDING_MENU_SMALL_TEMPLES) {
-        data.sub_type++;
-        if (data.sub_type > BUILDING_SMALL_TEMPLE_VENUS) {
-            data.sub_type = BUILDING_SMALL_TEMPLE_CERES;
-        }
-    }
-    if (data.type == BUILDING_MENU_LARGE_TEMPLES) {
-        data.sub_type++;
-        if (data.sub_type > BUILDING_LARGE_TEMPLE_VENUS) {
-            data.sub_type = BUILDING_LARGE_TEMPLE_CERES;
-        }
+    if (data.type == BUILDING_MENU_SMALL_TEMPLES || data.type == BUILDING_MENU_LARGE_TEMPLES) {
+        building_rotation_rotate_forward();
     }
     formation_move_herds_away(x_end, y_end);
     city_finance_process_construction(placement_cost);
@@ -1024,7 +1076,7 @@ int building_construction_can_place_on_terrain(int x, int y, int *warning_id)
             return 0;
         }
     } else if (data.required_terrain.rock) {
-        if (!map_terrain_exists_tile_in_radius_with_type(x, y, 2, 1, TERRAIN_ROCK)) {
+        if (!map_terrain_exists_rock_in_radius(x, y, 2, 1)) {
             set_warning(warning_id, WARNING_ROCK_NEEDED);
             return 0;
         }

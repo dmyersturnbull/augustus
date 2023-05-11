@@ -254,6 +254,8 @@ void figure_tower_sentry_action(figure *f)
                     f->destination_x = x_tile;
                     f->destination_y = y_tile;
                     figure_route_remove(f);
+                } else {
+                    f->state = FIGURE_STATE_DEAD;            
                 }
             }
             break;
@@ -296,9 +298,9 @@ void figure_tower_sentry_action(figure *f)
             }
             break;
         case FIGURE_ACTION_174_TOWER_SENTRY_GOING_TO_TOWER:
-            f->terrain_usage = TERRAIN_USAGE_ROADS;
+            f->terrain_usage = TERRAIN_USAGE_ROADS_HIGHWAY;
             if (config_get(CONFIG_GP_CH_TOWER_SENTRIES_GO_OFFROAD)) {
-                f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS;
+                f->terrain_usage = TERRAIN_USAGE_PREFER_ROADS_HIGHWAY;
             }
 
             f->is_ghost = 0;
@@ -339,6 +341,10 @@ void figure_tower_sentry_reroute(void)
     for (int i = 1; i < figure_count(); i++) {
         figure *f = figure_get(i);
         if (f->type != FIGURE_TOWER_SENTRY || map_routing_is_wall_passable(f->grid_offset)) {
+            continue;
+        }
+        if (f->action_state == FIGURE_ACTION_174_TOWER_SENTRY_GOING_TO_TOWER ||
+            (f->action_state == FIGURE_ACTION_150_ATTACK && f->action_state_before_attack == FIGURE_ACTION_174_TOWER_SENTRY_GOING_TO_TOWER)) {
             continue;
         }
         // tower sentry got off wall due to rotation

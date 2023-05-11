@@ -1,5 +1,6 @@
 #include "data_transfer.h"
 
+#include "building/roadblock.h"
 #include "building/storage.h"
 #include "city/warning.h"
 
@@ -7,23 +8,24 @@
 
 static struct {
     building_data_type data_type;
-    int subtype;
+    unsigned char resource[RESOURCE_MAX];
     building_storage storage;
-    int extended_data[16];
+    char i8;
+    short i16;
+    int i32;
 } data;
 
 int building_data_transfer_possible(building *b)
 {
     building_data_type data_type = building_data_transfer_data_type_from_building_type(b->type);
     if (data.data_type == DATA_TYPE_NOT_SUPPORTED || data_type == DATA_TYPE_NOT_SUPPORTED) {
-        city_warning_show(WARNING_DATA_PASTE_FAILURE);
+        city_warning_show(WARNING_DATA_PASTE_FAILURE, NEW_WARNING_SLOT);
         return 0;
     }
     if (data.data_type != data_type) {
-        city_warning_show(WARNING_DATA_PASTE_FAILURE);
+        city_warning_show(WARNING_DATA_PASTE_FAILURE, NEW_WARNING_SLOT);
         return 0;
     }
-
     return 1;
 }
 
@@ -31,7 +33,7 @@ int building_data_transfer_copy(building *b)
 {
     building_data_type data_type = building_data_transfer_data_type_from_building_type(b->type);
     if (data_type == DATA_TYPE_NOT_SUPPORTED) {
-        city_warning_show(WARNING_DATA_COPY_NOT_SUPPORTED);
+        city_warning_show(WARNING_DATA_COPY_NOT_SUPPORTED, NEW_WARNING_SLOT);
     } else {
         memset(&data, 0, sizeof(data));
         data.data_type = data_type;
@@ -41,10 +43,10 @@ int building_data_transfer_copy(building *b)
 
     switch (data_type) {
         case DATA_TYPE_ROADBLOCK:
-            data.subtype = b->data.roadblock.exceptions;
+            data.i16 = b->data.roadblock.exceptions;
             break;
         case DATA_TYPE_MARKET:
-            data.subtype = b->subtype.market_goods;
+            memcpy(data.resource, b->accepted_goods, sizeof(unsigned char) * RESOURCE_MAX);
             break;
         case DATA_TYPE_GRANARY:
             storage = building_storage_get(b->storage_id);
@@ -55,15 +57,15 @@ int building_data_transfer_copy(building *b)
             data.storage = *storage;
             break;
         case DATA_TYPE_DOCK:
-            data.subtype = b->subtype.market_goods;
-            data.extended_data[0] = b->data.dock.has_accepted_route_ids;
-            data.extended_data[1] = b->data.dock.accepted_route_ids;
+            memcpy(data.resource, b->accepted_goods, sizeof(unsigned char) * RESOURCE_MAX);
+            data.i8 = b->data.dock.has_accepted_route_ids;
+            data.i32 = b->data.dock.accepted_route_ids;
             break;
         default:
             return 0;
 
     }
-    city_warning_show(WARNING_DATA_COPY_SUCCESS);
+    city_warning_show(WARNING_DATA_COPY_SUCCESS, NEW_WARNING_SLOT);
     return 1;
 }
 
@@ -77,34 +79,35 @@ int building_data_transfer_paste(building *b)
 
     switch (data_type) {
         case DATA_TYPE_ROADBLOCK:
-            b->data.roadblock.exceptions = data.subtype;
+            b->data.roadblock.exceptions = data.i16;
             break;
         case DATA_TYPE_MARKET:
-            b->subtype.market_goods = data.subtype;
+            memcpy(b->accepted_goods, data.resource, sizeof(unsigned char) * RESOURCE_MAX);
             break;
         case DATA_TYPE_GRANARY:
         case DATA_TYPE_WAREHOUSE:
             building_storage_set_data(b->storage_id, data.storage);
             break;
         case DATA_TYPE_DOCK:
-            b->subtype.market_goods = data.subtype;
-            b->data.dock.has_accepted_route_ids = data.extended_data[0];
-            b->data.dock.accepted_route_ids = data.extended_data[1];
+            memcpy(b->accepted_goods, data.resource, sizeof(unsigned char) * RESOURCE_MAX);
+            b->data.dock.has_accepted_route_ids = data.i8;
+            b->data.dock.accepted_route_ids = data.i32;
             break;
         default:
             return 0;
     }
-    city_warning_show(WARNING_DATA_PASTE_SUCCESS);
+    city_warning_show(WARNING_DATA_PASTE_SUCCESS, NEW_WARNING_SLOT);
     return 1;
 
 }
 
 building_data_type building_data_transfer_data_type_from_building_type(building_type type)
 {
+    if (building_type_is_roadblock(type)) {
+        return DATA_TYPE_ROADBLOCK;
+    }
+
     switch (type) {
-        case BUILDING_ROADBLOCK:
-        case BUILDING_GARDEN_WALL_GATE:
-            return DATA_TYPE_ROADBLOCK;
         case BUILDING_DOCK:
             return DATA_TYPE_DOCK;
         case BUILDING_GRANARY:

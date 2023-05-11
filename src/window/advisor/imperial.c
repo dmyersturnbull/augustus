@@ -6,6 +6,7 @@
 #include "city/ratings.h"
 #include "city/request.h"
 #include "city/resource.h"
+#include "core/calc.h"
 #include "core/lang.h"
 #include "core/string.h"
 #include "empire/city.h"
@@ -59,9 +60,8 @@ static void draw_request(int index, const scenario_request *request)
 
     button_border_draw(38, 96 + 42 * index, 560, 40, 0);
     text_draw_number(request->amount, '@', " ", 40, 102 + 42 * index, FONT_NORMAL_WHITE, 0);
-    int resource_offset = request->resource + resource_image_offset(request->resource, RESOURCE_IMAGE_ICON);
-    image_draw(image_group(GROUP_RESOURCE_ICONS) + resource_offset, 110, 100 + 42 * index, COLOR_MASK_NONE, SCALE_NONE);
-    lang_text_draw(23, request->resource, 150, 102 + 42 * index, FONT_NORMAL_WHITE);
+    image_draw(resource_get_data(request->resource)->image.icon, 110, 100 + 42 * index, COLOR_MASK_NONE, SCALE_NONE);
+    text_draw(resource_get_data(request->resource)->text, 150, 102 + 42 * index, FONT_NORMAL_WHITE, COLOR_MASK_NONE);
 
     int width = lang_text_draw_amount(8, 4, request->months_to_comply, 310, 102 + 42 * index, FONT_NORMAL_WHITE);
     lang_text_draw(12, 2, 310 + width, 102 + 42 * index, FONT_NORMAL_WHITE);
@@ -116,10 +116,11 @@ static int draw_background(void)
     if (city_request_has_troop_request()) {
         // can send to distant battle
         button_border_draw(38, 96, 560, 40, 0);
-        image_draw(image_group(GROUP_RESOURCE_ICONS) + RESOURCE_WEAPONS, 50, 106, COLOR_MASK_NONE, SCALE_NONE);
+        image_draw(resource_get_data(RESOURCE_WEAPONS)->image.icon, 50, 106, COLOR_MASK_NONE, SCALE_NONE);
         width = lang_text_draw(52, 72, 80, 102, FONT_NORMAL_WHITE);
-        lang_text_draw(21, empire_city_get(city_military_distant_battle_city())->name_id,
-            80 + width, 102, FONT_NORMAL_WHITE);
+        empire_city *city = empire_city_get(city_military_distant_battle_city());
+        const uint8_t *city_name = empire_city_get_name(city);
+        text_draw(city_name, 80 + width, 102, FONT_NORMAL_WHITE, 0);
         int strength_text_id;
         int enemy_strength = city_military_distant_battle_enemy_strength();
         if (enemy_strength < 46) {
@@ -171,7 +172,9 @@ static void draw_foreground(void)
 
 static int handle_mouse(const mouse *m)
 {
-    return generic_buttons_handle_mouse(m, 0, 0, imperial_buttons, 8, &focus_button_id);
+    int request_count = city_request_has_troop_request() + scenario_request_count_visible();
+    request_count = calc_bound(request_count, 0, CITY_REQUEST_MAX_ACTIVE);
+    return generic_buttons_handle_mouse(m, 0, 0, imperial_buttons, 3 + request_count, &focus_button_id);
 }
 
 static void button_donate_to_city(int param1, int param2)
@@ -275,7 +278,7 @@ void button_request_resource(int index, int param2)
 static void write_resource_storage_tooltip(advisor_tooltip_result *r, int resource)
 {
     int amount_warehouse = city_resource_count(resource);
-    int amount_granary = city_resource_count_food_on_granaries(resource) / RESOURCE_GRANARY_ONE_LOAD;
+    int amount_granary = city_resource_count_food_on_granaries(resource) / RESOURCE_ONE_LOAD;
     uint8_t *text = tooltip_resource_info;
     text += string_from_int(text, amount_warehouse, 0);
     *text = ' ';

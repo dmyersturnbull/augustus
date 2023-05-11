@@ -5,14 +5,11 @@
 #include "graphics/renderer.h"
 #include "graphics/screen.h"
 
-#include <stdlib.h>
-#include <string.h>
-
 void image_draw(int image_id, int x, int y, color_t color, float scale)
 {
     const image *img = image_get(image_id);
-    if (image_is_external(image_id)) {
-        image_load_external_data(image_id);
+    if (image_is_external(img)) {
+        image_load_external_data(img);
     } else if ((img->atlas.id >> IMAGE_ATLAS_BIT_OFFSET) == ATLAS_UNPACKED_EXTRA_ASSET) {
         assets_load_unpacked_asset(image_id);
     }
@@ -30,7 +27,7 @@ void image_draw_enemy(int image_id, int x, int y, float scale)
 void image_blend_footprint_color(int x, int y, color_t color, float scale)
 {
     graphics_renderer()->draw_custom_image(color == COLOR_MASK_GREEN ?
-        CUSTOM_IMAGE_GREEN_FOOTPRINT : CUSTOM_IMAGE_RED_FOOTPRINT, x, y, scale);
+        CUSTOM_IMAGE_GREEN_FOOTPRINT : CUSTOM_IMAGE_RED_FOOTPRINT, x, y, scale, 0);
 }
 
 static color_t base_color_for_font(font_t font)
@@ -80,7 +77,6 @@ static void draw_multibyte_letter(font_t font, const image *img, int x, int y, c
 
 void image_draw_letter(font_t font, int letter_id, int x, int y, color_t color, float scale)
 {
-
     const image *img = image_letter(letter_id);
     if (letter_id >= IMAGE_FONT_MULTIBYTE_OFFSET) {
         draw_multibyte_letter(font, img, x, y, color, scale);
@@ -113,8 +109,8 @@ static inline void draw_fullscreen_background(int image_id)
             y = (int) ((s_height - img->height / scale) / 2 * scale);
         }
         const image *img = image_get(image_id);
-        if (image_is_external(image_id)) {
-            image_load_external_data(image_id);
+        if (image_is_external(img)) {
+            image_load_external_data(img);
         } else if ((img->atlas.id >> IMAGE_ATLAS_BIT_OFFSET) == ATLAS_UNPACKED_EXTRA_ASSET) {
             assets_load_unpacked_asset(image_id);
         }
@@ -195,21 +191,40 @@ void image_draw_isometric_footprint_from_draw_tile(int image_id, int x, int y, c
 void image_draw_isometric_top(int image_id, int x, int y, color_t color_mask, float scale)
 {
     const image *img = image_get(image_id);
+    if (!img->top) {
+        return;
+    }
     if ((img->atlas.id >> IMAGE_ATLAS_BIT_OFFSET) == ATLAS_UNPACKED_EXTRA_ASSET) {
         assets_load_unpacked_asset(image_id);
     }
     int num_tiles = (img->width + 2) / (FOOTPRINT_WIDTH + 2);
     x -= 30 * (num_tiles - 1);
-    y -= img->top_height - FOOTPRINT_HALF_HEIGHT * num_tiles;
-    graphics_renderer()->draw_isometric_top(image_get(image_id), x, y, color_mask, scale);
+    y -= img->top->original.height - FOOTPRINT_HALF_HEIGHT * num_tiles;
+    graphics_renderer()->draw_image(img->top, x, y, color_mask, scale);
 }
 
 void image_draw_isometric_top_from_draw_tile(int image_id, int x, int y, color_t color_mask, float scale)
 {
     const image *img = image_get(image_id);
+    if (!img->top) {
+        return;
+    }
     if ((img->atlas.id >> IMAGE_ATLAS_BIT_OFFSET) == ATLAS_UNPACKED_EXTRA_ASSET) {
         assets_load_unpacked_asset(image_id);
     }
-    y -= img->top_height - FOOTPRINT_HALF_HEIGHT;
-    graphics_renderer()->draw_isometric_top(img, x, y, color_mask, scale);
+    y -= img->top->original.height - FOOTPRINT_HALF_HEIGHT;
+    graphics_renderer()->draw_image(img->top, x, y, color_mask, scale);
+}
+
+void image_draw_set_isometric_top_from_draw_tile(int image_id, int x, int y, color_t color_mask, float scale)
+{
+    const image *img = image_get(image_id);
+    if (!img->top) {
+        return;
+    }
+    if ((img->atlas.id >> IMAGE_ATLAS_BIT_OFFSET) == ATLAS_UNPACKED_EXTRA_ASSET) {
+        assets_load_unpacked_asset(image_id);
+    }
+    y -= img->top->original.height - FOOTPRINT_HALF_HEIGHT;
+    graphics_renderer()->draw_silhouette(img->top, x, y, color_mask, scale);
 }

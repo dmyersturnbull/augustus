@@ -8,8 +8,12 @@
 #include "core/lang.h"
 #include "core/string.h"
 #include "core/time.h"
+#include "editor/empire.h"
+#include "empire/xml.h"
 #include "game/file.h"
 #include "game/file_editor.h"
+#include "game/file_io.h"
+#include "game/save_version.h"
 #include "graphics/generic_button.h"
 #include "graphics/graphics.h"
 #include "graphics/image.h"
@@ -21,15 +25,24 @@
 #include "graphics/window.h"
 #include "input/input.h"
 #include "platform/file_manager.h"
+#include "scenario/editor.h"
+#include "scenario/custom_messages_export_xml.h"
+#include "scenario/custom_messages_import_xml.h"
+#include "scenario/scenario_events_export_xml.h"
+#include "scenario/scenario_events_import_xml.h"
+#include "translation/translation.h"
 #include "widget/input_box.h"
 #include "window/city.h"
+#include "window/editor/custom_messages.h"
 #include "window/editor/map.h"
+#include "window/editor/scenario_events.h"
+#include "widget/minimap.h"
 #include "window/plain_message_dialog.h"
 
 #include <string.h>
 
-#define NUM_FILES_IN_VIEW 12
-#define MAX_FILE_WINDOW_TEXT_WIDTH (18 * BLOCK_SIZE)
+#define NUM_FILES_IN_VIEW 21
+#define MAX_FILE_WINDOW_TEXT_WIDTH (16 * BLOCK_SIZE)
 
 static const time_millis NOT_EXIST_MESSAGE_TIMEOUT = 500;
 
@@ -38,28 +51,37 @@ static void button_select_file(int index, int param2);
 static void on_scroll(void);
 
 static image_button image_buttons[] = {
-    {344, 335, 39, 26, IB_NORMAL, GROUP_OK_CANCEL_SCROLL_BUTTONS, 0, button_ok_cancel, button_none, 1, 0, 1},
-    {392, 335, 39, 26, IB_NORMAL, GROUP_OK_CANCEL_SCROLL_BUTTONS, 4, button_ok_cancel, button_none, 0, 0, 1},
+    {536, 440, 39, 26, IB_NORMAL, GROUP_OK_CANCEL_SCROLL_BUTTONS, 0, button_ok_cancel, button_none, 1, 0, 1},
+    {584, 440, 39, 26, IB_NORMAL, GROUP_OK_CANCEL_SCROLL_BUTTONS, 4, button_ok_cancel, button_none, 0, 0, 1},
 };
 static generic_button file_buttons[] = {
-    {160, 128, 288, 16, button_select_file, button_none, 0, 0},
-    {160, 144, 288, 16, button_select_file, button_none, 1, 0},
-    {160, 160, 288, 16, button_select_file, button_none, 2, 0},
-    {160, 176, 288, 16, button_select_file, button_none, 3, 0},
-    {160, 192, 288, 16, button_select_file, button_none, 4, 0},
-    {160, 208, 288, 16, button_select_file, button_none, 5, 0},
-    {160, 224, 288, 16, button_select_file, button_none, 6, 0},
-    {160, 240, 288, 16, button_select_file, button_none, 7, 0},
-    {160, 256, 288, 16, button_select_file, button_none, 8, 0},
-    {160, 272, 288, 16, button_select_file, button_none, 9, 0},
-    {160, 288, 288, 16, button_select_file, button_none, 10, 0},
-    {160, 304, 288, 16, button_select_file, button_none, 11, 0},
+    {32, 88 + 16 * 0, 256, 16, button_select_file, button_none, 0, 0},
+    {32, 88 + 16 * 1, 256, 16, button_select_file, button_none, 1, 0},
+    {32, 88 + 16 * 2, 256, 16, button_select_file, button_none, 2, 0},
+    {32, 88 + 16 * 3, 256, 16, button_select_file, button_none, 3, 0},
+    {32, 88 + 16 * 4, 256, 16, button_select_file, button_none, 4, 0},
+    {32, 88 + 16 * 5, 256, 16, button_select_file, button_none, 5, 0},
+    {32, 88 + 16 * 6, 256, 16, button_select_file, button_none, 6, 0},
+    {32, 88 + 16 * 7, 256, 16, button_select_file, button_none, 7, 0},
+    {32, 88 + 16 * 8, 256, 16, button_select_file, button_none, 8, 0},
+    {32, 88 + 16 * 9, 256, 16, button_select_file, button_none, 9, 0},
+    {32, 88 + 16 * 10, 256, 16, button_select_file, button_none, 10, 0},
+    {32, 88 + 16 * 11, 256, 16, button_select_file, button_none, 11, 0},
+    {32, 88 + 16 * 12, 256, 16, button_select_file, button_none, 12, 0},
+    {32, 88 + 16 * 13, 256, 16, button_select_file, button_none, 13, 0},
+    {32, 88 + 16 * 14, 256, 16, button_select_file, button_none, 14, 0},
+    {32, 88 + 16 * 15, 256, 16, button_select_file, button_none, 15, 0},
+    {32, 88 + 16 * 16, 256, 16, button_select_file, button_none, 16, 0},
+    {32, 88 + 16 * 17, 256, 16, button_select_file, button_none, 17, 0},
+    {32, 88 + 16 * 18, 256, 16, button_select_file, button_none, 18, 0},
+    {32, 88 + 16 * 19, 256, 16, button_select_file, button_none, 19, 0},
+    {32, 88 + 16 * 20, 256, 16, button_select_file, button_none, 20, 0},
 };
 
-static scrollbar_type scrollbar = { 464, 120, 206, on_scroll };
+static scrollbar_type scrollbar = { 304, 80, 350, 256, NUM_FILES_IN_VIEW, on_scroll, 1 };
 
 typedef struct {
-    char extension[4];
+    char extension[5];
     char last_loaded_file[FILE_NAME_MAX];
 } file_type_data;
 
@@ -75,13 +97,27 @@ static struct {
     uint8_t typed_name[FILE_NAME_MAX];
     uint8_t previously_seen_typed_name[FILE_NAME_MAX];
     char selected_file[FILE_NAME_MAX];
+    union {
+        saved_game_info save_game;
+        scenario_info scenario;
+    } info;
+    savegame_load_status savegame_info_status;
+    int redraw_full_window;
 } data;
 
-static input_box file_name_input = { 144, 80, 20, 2, FONT_NORMAL_WHITE, 0, data.typed_name, FILE_NAME_MAX };
+static const int MISSION_ID_TO_CITY_ID[] = {
+    0, 3, 2, 1, 7, 10, 18, 4, 30, 6, 12, 14, 16, 27, 31, 23, 36, 38, 28, 25
+};
+
+static input_box file_name_input = { 16, 40, 38, 2, FONT_NORMAL_WHITE, 0, data.typed_name, FILE_NAME_MAX };
 
 static file_type_data saved_game_data = { "sav" };
 static file_type_data saved_game_data_expanded = { "svx" };
 static file_type_data scenario_data = { "map" };
+static file_type_data scenario_data_expanded = { "mapx" };
+static file_type_data empire_data = { "xml" };
+static file_type_data scenario_event_data = { "xml" };
+static file_type_data custom_messages_data = { "xml" };
 
 static int find_first_file_with_prefix(const char *prefix)
 {
@@ -123,7 +159,17 @@ static void scroll_to_typed_text(void)
 static void init(file_type type, file_dialog_type dialog_type)
 {
     data.type = type;
-    data.file_data = type == FILE_TYPE_SCENARIO ? &scenario_data : &saved_game_data;
+    if (type == FILE_TYPE_SCENARIO) {
+        data.file_data = &scenario_data;
+    } else if (type == FILE_TYPE_EMPIRE) {
+        data.file_data = &empire_data;
+    } else if (type == FILE_TYPE_SCENARIO_EVENTS) {
+        data.file_data = &scenario_event_data;
+    } else if (type == FILE_TYPE_CUSTOM_MESSAGES) {
+        data.file_data = &custom_messages_data;
+    } else {
+        data.file_data = &saved_game_data;
+    }
     data.dialog_type = dialog_type;
 
     data.message_not_exist_start_time = 0;
@@ -132,12 +178,20 @@ static void init(file_type type, file_dialog_type dialog_type)
 
     if (strlen(data.file_data->last_loaded_file) > 0) {
         encoding_from_utf8(data.file_data->last_loaded_file, data.typed_name, FILE_NAME_MAX);
-        file_remove_extension((char *) data.typed_name);
+        if (data.dialog_type == FILE_DIALOG_SAVE) {
+            file_remove_extension((char *) data.typed_name);
+        }
     } else if (dialog_type == FILE_DIALOG_SAVE) {
         // Suggest default filename
         string_copy(lang_get_string(9, type == FILE_TYPE_SCENARIO ? 7 : 6), data.typed_name, FILE_NAME_MAX);
         if (type == FILE_TYPE_SAVED_GAME) {
             file_append_extension((char *) data.typed_name, saved_game_data_expanded.extension);
+        } else if (type == FILE_TYPE_SCENARIO) {
+            file_append_extension((char *)data.typed_name, scenario_data_expanded.extension);
+        } else if (type == FILE_TYPE_SCENARIO_EVENTS) {
+            file_append_extension((char *)data.typed_name, scenario_event_data.extension);
+        } else if (type == FILE_TYPE_CUSTOM_MESSAGES) {
+            file_append_extension((char *)data.typed_name, custom_messages_data.extension);
         }
         encoding_to_utf8(data.typed_name, data.file_data->last_loaded_file, FILE_NAME_MAX, 0);
     } else {
@@ -149,59 +203,152 @@ static void init(file_type type, file_dialog_type dialog_type)
     if (data.dialog_type != FILE_DIALOG_SAVE) {
         if (type == FILE_TYPE_SCENARIO) {
             data.file_list = dir_find_files_with_extension(".", scenario_data.extension);
+            data.file_list = dir_append_files_with_extension(scenario_data_expanded.extension);
+        } else if (type == FILE_TYPE_EMPIRE) {
+            data.file_list = dir_find_files_with_extension("custom_empires", empire_data.extension);
+        } else if (type == FILE_TYPE_SCENARIO_EVENTS) {
+            data.file_list = dir_find_files_with_extension("editor/events", scenario_event_data.extension);
+        } else if (type == FILE_TYPE_CUSTOM_MESSAGES) {
+            data.file_list = dir_find_files_with_extension("editor/messages", custom_messages_data.extension);
         } else {
             data.file_list = dir_find_files_with_extension(".", data.file_data->extension);
             data.file_list = dir_append_files_with_extension(saved_game_data_expanded.extension);
         }
     } else {
         if (type == FILE_TYPE_SCENARIO) {
-            data.file_list = dir_find_files_with_extension(".", scenario_data.extension);
+            data.file_list = dir_find_files_with_extension(".", scenario_data_expanded.extension);
+        } else if (type == FILE_TYPE_SCENARIO_EVENTS) {
+            data.file_list = dir_find_files_with_extension("editor/events", scenario_event_data.extension);
+        } else if (type == FILE_TYPE_CUSTOM_MESSAGES) {
+            data.file_list = dir_find_files_with_extension("editor/messages", custom_messages_data.extension);
         } else {
             data.file_list = dir_find_files_with_extension(".", saved_game_data_expanded.extension);
         }
     }
-    scrollbar_init(&scrollbar, 0, data.file_list->num_files - NUM_FILES_IN_VIEW);
+    scrollbar_init(&scrollbar, 0, data.file_list->num_files);
     scroll_to_typed_text();
 
     strncpy(data.selected_file, data.file_data->last_loaded_file, FILE_NAME_MAX);
     input_box_start(&file_name_input);
 }
 
+static void draw_mission_info(int x_offset, int y_offset, int box_size)
+{
+    if (data.info.save_game.custom_mission) {
+        text_draw_centered(translation_for(TR_SAVE_DIALOG_CUSTOM_SCENARIO),
+            x_offset, y_offset, box_size, FONT_NORMAL_BLACK, 0);
+        return;
+    }
+    if (data.info.save_game.mission == 0) {
+        text_draw_centered(translation_for(TR_SAVE_DIALOG_FIRST_MISSION),
+            x_offset, y_offset, box_size, FONT_NORMAL_BLACK, 0);
+        return;
+    }
+    translation_key mission_type;
+    if (data.info.save_game.mission == 1) {
+        mission_type = TR_SAVE_DIALOG_MISSION;
+    } else if (data.info.save_game.mission % 2) {
+        mission_type = TR_SAVE_DIALOG_MILITARY;
+    } else {
+        mission_type = TR_SAVE_DIALOG_PEACEFUL;
+    }
+    int width = text_draw(translation_for(mission_type), x_offset, y_offset, FONT_NORMAL_BLACK, 0);
+    width += text_draw_number(data.info.save_game.mission / 2 + 2, '\0', " -", x_offset + width, y_offset,
+        FONT_NORMAL_BLACK, COLOR_MASK_NONE);
+    lang_text_draw(21, MISSION_ID_TO_CITY_ID[data.info.save_game.mission], x_offset + width, y_offset, FONT_NORMAL_BLACK);
+}
+
+static void draw_background(void)
+{
+    window_draw_underlying_window();
+    if (*data.selected_file) {
+        if (data.type == FILE_TYPE_SAVED_GAME) {
+            data.savegame_info_status = game_file_io_read_saved_game_info(data.selected_file, &data.info.save_game);
+        } else {
+            data.savegame_info_status = game_file_io_read_scenario_info(data.selected_file, &data.info.scenario);
+        }
+    }
+    data.redraw_full_window = 1;
+}
+
 static void draw_foreground(void)
 {
     graphics_in_dialog();
-    uint8_t file[FILE_NAME_MAX];
 
-    outer_panel_draw(128, 40, 24, 21);
-    input_box_draw(&file_name_input);
-    inner_panel_draw(144, 120, 20, 13);
+    if (data.redraw_full_window) {
+        uint8_t file[FILE_NAME_MAX];
 
-    // title
-    if (data.message_not_exist_start_time
-        && time_get_millis() - data.message_not_exist_start_time < NOT_EXIST_MESSAGE_TIMEOUT) {
-        lang_text_draw_centered(43, 2, 160, 50, 304, FONT_LARGE_BLACK);
-    } else if (data.dialog_type == FILE_DIALOG_DELETE) {
-        lang_text_draw_centered(43, 6, 160, 50, 304, FONT_LARGE_BLACK);
-    } else {
-        int text_id = data.dialog_type + (data.type == FILE_TYPE_SCENARIO ? 3 : 0);
-        lang_text_draw_centered(43, text_id, 160, 50, 304, FONT_LARGE_BLACK);
-    }
-    lang_text_draw(43, 5, 224, 342, FONT_NORMAL_BLACK);
+        outer_panel_draw(0, 0, 40, 30);
+        inner_panel_draw(16, 80, 18, 22);
 
-    for (int i = 0; i < NUM_FILES_IN_VIEW; i++) {
-        font_t font = FONT_NORMAL_GREEN;
-        if (data.focus_button_id == i + 1) {
-            font = FONT_NORMAL_WHITE;
+        // title
+        if (data.message_not_exist_start_time
+            && time_get_millis() - data.message_not_exist_start_time < NOT_EXIST_MESSAGE_TIMEOUT) {
+            lang_text_draw_centered(43, 2, 32, 10, 554, FONT_LARGE_BLACK);
+        } else if (data.dialog_type == FILE_DIALOG_DELETE) {
+            lang_text_draw_centered(43, 6, 32, 10, 554, FONT_LARGE_BLACK);
+        } else if (data.type == FILE_TYPE_EMPIRE) {
+            lang_text_draw_centered(CUSTOM_TRANSLATION, TR_EDITOR_CUSTOM_EMPIRE_TITLE, 32, 10, 554, FONT_LARGE_BLACK);
+        } else if (data.type == FILE_TYPE_SCENARIO_EVENTS) {
+            int message_id = TR_EDITOR_SCENARIO_EVENTS_IMPORT_FULL;
+            if (data.dialog_type == FILE_DIALOG_SAVE) {
+                message_id = TR_EDITOR_SCENARIO_EVENTS_EXPORT_FULL;
+            }
+            lang_text_draw_centered(CUSTOM_TRANSLATION, message_id, 32, 10, 554, FONT_LARGE_BLACK);
+        } else if (data.type == FILE_TYPE_CUSTOM_MESSAGES) {
+            int message_id = TR_EDITOR_CUSTOM_MESSAGES_IMPORT_FULL;
+            if (data.dialog_type == FILE_DIALOG_SAVE) {
+                message_id = TR_EDITOR_CUSTOM_MESSAGES_EXPORT_FULL;
+            }
+            lang_text_draw_centered(CUSTOM_TRANSLATION, message_id, 32, 10, 554, FONT_LARGE_BLACK);
+        } else {
+            int text_id = data.dialog_type + (data.type == FILE_TYPE_SCENARIO ? 3 : 0);
+            lang_text_draw_centered(43, text_id, 32, 10, 554, FONT_LARGE_BLACK);
         }
-        encoding_from_utf8(data.file_list->files[scrollbar.scroll_position + i], file, FILE_NAME_MAX);
-        //file_remove_extension(file);
-        text_ellipsize(file, font, MAX_FILE_WINDOW_TEXT_WIDTH);
-        text_draw(file, 160, 130 + 16 * i, font, 0);
+        lang_text_draw_centered(43, 5, 362, 447, 164, FONT_NORMAL_BLACK);
+
+        for (int i = 0; i < NUM_FILES_IN_VIEW; i++) {
+            font_t font = FONT_NORMAL_GREEN;
+            if (data.focus_button_id == i + 1) {
+                font = FONT_NORMAL_WHITE;
+            }
+            encoding_from_utf8(data.file_list->files[scrollbar.scroll_position + i], file, FILE_NAME_MAX);
+            text_ellipsize(file, font, MAX_FILE_WINDOW_TEXT_WIDTH);
+            text_draw(file, 32, 90 + 16 * i, font, 0);
+        }
+
+        // Saved game info
+        if (*data.selected_file && data.type != FILE_TYPE_EMPIRE && data.type != FILE_TYPE_SCENARIO_EVENTS
+            && data.type != FILE_TYPE_CUSTOM_MESSAGES) {
+            if (data.savegame_info_status == SAVEGAME_STATUS_OK) {
+                if (data.type == FILE_TYPE_SAVED_GAME) {
+                    draw_mission_info(362, 356, 246);
+                    text_draw(translation_for(TR_SAVE_DIALOG_FUNDS), 362, 376, FONT_NORMAL_BLACK, 0);
+                    text_draw_money(data.info.save_game.treasury, 494, 376, FONT_NORMAL_BLACK);
+                    text_draw(translation_for(TR_SAVE_DIALOG_DATE), 362, 396, FONT_NORMAL_BLACK, 0);
+                    lang_text_draw_month_year_max_width(data.info.save_game.month, data.info.save_game.year,
+                        500, 396, 108, FONT_NORMAL_BLACK, 0);
+                    text_draw(translation_for(TR_SAVE_DIALOG_POPULATION), 362, 416, FONT_NORMAL_BLACK, 0);
+                    text_draw_number(data.info.save_game.population, '\0', "",
+                        500, 416, FONT_NORMAL_BLACK, COLOR_MASK_NONE);
+                    widget_minimap_draw(352, 80, 266, 272);
+                } else {
+                    widget_minimap_draw(352, 80, 266, 352);
+                }
+            } else {
+                translation_key key = data.savegame_info_status == SAVEGAME_STATUS_INVALID ?
+                    TR_SAVE_DIALOG_INVALID_FILE : TR_SAVE_DIALOG_INCOMPATIBLE_VERSION;
+                text_draw_centered(translation_for(key), 362, 241, 246, FONT_LARGE_BLACK, 0);
+            }
+        } else {
+            text_draw_centered(translation_for(TR_SAVE_DIALOG_SELECT_FILE), 362, 246, 246, FONT_NORMAL_BLACK, 0);
+        }
+        data.redraw_full_window = 0;
     }
 
+    input_box_draw(&file_name_input);
     image_buttons_draw(0, 0, image_buttons, 2);
     scrollbar_draw(&scrollbar);
-
     graphics_reset_dialog();
 }
 
@@ -227,21 +374,36 @@ static void handle_input(const mouse *m, const hotkeys *h)
         button_ok_cancel(1, 0);
         return;
     }
+    
+    if (data.message_not_exist_start_time &&
+        time_get_millis() - data.message_not_exist_start_time >= NOT_EXIST_MESSAGE_TIMEOUT) {
+        data.redraw_full_window = 1;
+        data.message_not_exist_start_time = 0;
+    }
 
     const mouse *m_dialog = mouse_in_dialog(m);
-    if (input_box_handle_mouse(m_dialog, &file_name_input) ||
+    int focus_id = data.focus_button_id;
+    int scroll_position = scrollbar.scroll_position;
+    data.focus_button_id = 0;
+    if (scrollbar_handle_mouse(&scrollbar, m_dialog, 1) ||
+        input_box_handle_mouse(m_dialog, &file_name_input) ||
         generic_buttons_handle_mouse(m_dialog, 0, 0, file_buttons, NUM_FILES_IN_VIEW, &data.focus_button_id) ||
-        image_buttons_handle_mouse(m_dialog, 0, 0, image_buttons, 2, 0) ||
-        scrollbar_handle_mouse(&scrollbar, m_dialog)) {
+        image_buttons_handle_mouse(m_dialog, 0, 0, image_buttons, 2, 0)) {
+        data.redraw_full_window = 1;
         return;
     }
     if (input_go_back_requested(m, h)) {
         input_box_stop(&file_name_input);
         window_go_back();
+        return;
     }
 
     if (should_scroll_to_typed_text()) {
         scroll_to_typed_text();
+        data.redraw_full_window = 1;
+    }
+    if (focus_id != data.focus_button_id || scroll_position != scrollbar.scroll_position) {
+        data.redraw_full_window = 1;
     }
 }
 
@@ -270,7 +432,17 @@ static void button_ok_cancel(int is_ok, int param2)
         return;
     }
 
-    char *filename = get_chosen_filename();
+    char *chosen_filename = get_chosen_filename();
+    char filename[FILE_NAME_MAX];
+    memset(filename, 0, sizeof(filename));
+    if (data.type == FILE_TYPE_EMPIRE) {
+        strncpy(filename, "custom_empires/", FILE_NAME_MAX - 1);
+    } else if (data.type == FILE_TYPE_SCENARIO_EVENTS) {
+        strncpy(filename, "editor/events/", FILE_NAME_MAX - 1);
+    } else if (data.type == FILE_TYPE_CUSTOM_MESSAGES) {
+        strncpy(filename, "editor/messages/", FILE_NAME_MAX - 1);
+    }
+    strncat(filename, chosen_filename, sizeof(filename) - strlen(filename) - 1);
 
     if (data.dialog_type != FILE_DIALOG_SAVE && !file_exists(filename, NOT_LOCALIZED)) {
         data.message_not_exist_start_time = time_get_millis();
@@ -298,6 +470,31 @@ static void button_ok_cancel(int is_ok, int param2)
                 data.message_not_exist_start_time = time_get_millis();
                 return;
             }
+        } else if (data.type == FILE_TYPE_EMPIRE) {
+            int result = empire_xml_parse_file(filename);
+            if (result) {
+                scenario_editor_set_custom_empire(filename);
+                window_editor_empire_show();
+            } else {
+                window_plain_message_dialog_show(TR_EDITOR_UNABLE_TO_LOAD_EMPIRE_TITLE, TR_EDITOR_UNABLE_TO_LOAD_EMPIRE_MESSAGE, 1);
+                return;
+            }
+        } else if (data.type == FILE_TYPE_SCENARIO_EVENTS) {
+            int result = scenario_events_xml_parse_file(filename);
+            if (result) {
+                window_editor_scenario_events_show();
+            } else {
+                window_plain_message_dialog_show(TR_EDITOR_UNABLE_TO_LOAD_EVENTS_TITLE, TR_EDITOR_CHECK_LOG_MESSAGE, 1);
+                return;
+            }
+        } else if (data.type == FILE_TYPE_CUSTOM_MESSAGES) {
+            int result = custom_messages_xml_parse_file(filename);
+            if (result) {
+                window_editor_custom_messages_show();
+            } else {
+                window_plain_message_dialog_show(TR_EDITOR_UNABLE_TO_LOAD_CUSTOM_MESSAGES_TITLE, TR_EDITOR_CHECK_LOG_MESSAGE, 1);
+                return;
+            }
         }
     } else if (data.dialog_type == FILE_DIALOG_SAVE) {
         input_box_stop(&file_name_input);
@@ -312,12 +509,25 @@ static void button_ok_cancel(int is_ok, int param2)
             }
             window_city_show();
         } else if (data.type == FILE_TYPE_SCENARIO) {
-            if (!file_has_extension(filename, scenario_data.extension)) {
-                file_append_extension(filename, scenario_data.extension);
+            if (!file_has_extension(filename, scenario_data_expanded.extension)) {
+                file_append_extension(filename, scenario_data_expanded.extension);
             }
             game_file_editor_write_scenario(filename);
             window_editor_map_show();
+        } else if (data.type == FILE_TYPE_SCENARIO_EVENTS) {
+            if (!file_has_extension(filename, scenario_event_data.extension)) {
+                file_append_extension(filename, scenario_event_data.extension);
+            }
+            scenario_events_export_to_xml(filename);
+            window_editor_scenario_events_show();
+        } else if (data.type == FILE_TYPE_CUSTOM_MESSAGES) {
+            if (!file_has_extension(filename, custom_messages_data.extension)) {
+                file_append_extension(filename, custom_messages_data.extension);
+            }
+            custom_messages_export_to_xml(filename);
+            window_editor_custom_messages_show();
         }
+        strncpy(chosen_filename, filename, FILE_NAME_MAX);
     } else if (data.dialog_type == FILE_DIALOG_DELETE) {
         if (game_file_delete_saved_game(filename)) {
             dir_find_files_with_extension(".", data.file_data->extension);
@@ -325,7 +535,6 @@ static void button_ok_cancel(int is_ok, int param2)
 
             if (scrollbar.scroll_position + NUM_FILES_IN_VIEW >= data.file_list->num_files) {
                 --scrollbar.scroll_position;
-
             }
             if (scrollbar.scroll_position < 0) {
                 scrollbar.scroll_position = 0;
@@ -333,7 +542,7 @@ static void button_ok_cancel(int is_ok, int param2)
         }
     }
 
-    strncpy(data.file_data->last_loaded_file, filename, FILE_NAME_MAX - 1);
+    strncpy(data.file_data->last_loaded_file, chosen_filename, FILE_NAME_MAX);
 }
 
 static void on_scroll(void)
@@ -343,12 +552,14 @@ static void on_scroll(void)
 
 static void button_select_file(int index, int param2)
 {
-    if (index < data.file_list->num_files) {
+    if (index < data.file_list->num_files &&
+        strcmp(data.selected_file, data.file_list->files[scrollbar.scroll_position + index]) != 0) {
         strncpy(data.selected_file, data.file_list->files[scrollbar.scroll_position + index], FILE_NAME_MAX - 1);
         encoding_from_utf8(data.selected_file, data.typed_name, FILE_NAME_MAX);
         string_copy(data.typed_name, data.previously_seen_typed_name, FILE_NAME_MAX);
         input_box_refresh_text(&file_name_input);
         data.message_not_exist_start_time = 0;
+        window_request_refresh();
     }
     if (data.dialog_type != FILE_DIALOG_DELETE && data.double_click) {
         data.double_click = 0;
@@ -360,7 +571,7 @@ void window_file_dialog_show(file_type type, file_dialog_type dialog_type)
 {
     window_type window = {
         WINDOW_FILE_DIALOG,
-        window_draw_underlying_window,
+        draw_background,
         draw_foreground,
         handle_input
     };

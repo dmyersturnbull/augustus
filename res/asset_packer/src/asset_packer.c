@@ -34,7 +34,6 @@
 #define PACKED_ASSETS_DIR "packed_assets"
 #define CURSORS_DIR "Color_Cursors"
 #define BYTES_PER_PIXEL 4
-#define FILE_NAME_MAX 300
 
 #ifdef FORMAT_XML
 #define FORMAT_NEWLINE "\n"
@@ -47,6 +46,7 @@
 static const char *LAYER_PART[] = { "footprint", "top" };
 static const char *LAYER_ROTATE[] = { "90", "180", "270" };
 static const char *LAYER_INVERT[] = { "horizontal", "vertical", "both" };
+static const char *LAYER_MASK[] = { "grayscale", "alpha" };
 
 static char current_file[FILE_NAME_MAX];
 
@@ -145,7 +145,7 @@ static void create_layer_xml_line(FILE *xml_file, const layer *l)
     add_attribute_enum(xml_file, "invert", l->invert, LAYER_INVERT, 3);
     add_attribute_enum(xml_file, "rotate", l->rotate, LAYER_ROTATE, 3);
     add_attribute_enum(xml_file, "part", l->part, LAYER_PART, 2);
-    add_attribute_bool(xml_file, "grayscale", l->grayscale, "true");
+    add_attribute_enum(xml_file, "mask", l->mask, LAYER_MASK, 2);
 
     fprintf(xml_file, "/>%s", FORMAT_NEWLINE);
 }
@@ -155,12 +155,12 @@ static void create_animation_xml_line(FILE *xml_file, const asset_image *image)
     fprintf(xml_file, "%s%s<animation", FORMAT_IDENT, FORMAT_IDENT);
 
     if (!image->has_frame_elements) {
-        add_attribute_int(xml_file, "frames", image->img.animation.num_sprites);
+        add_attribute_int(xml_file, "frames", image->img.animation->num_sprites);
     }
-    add_attribute_int(xml_file, "speed", image->img.animation.speed_id);
-    add_attribute_int(xml_file, "x", image->img.animation.sprite_offset_x);
-    add_attribute_int(xml_file, "y", image->img.animation.sprite_offset_y);
-    add_attribute_bool(xml_file, "reversible", image->img.animation.can_reverse, "true");
+    add_attribute_int(xml_file, "speed", image->img.animation->speed_id);
+    add_attribute_int(xml_file, "x", image->img.animation->sprite_offset_x);
+    add_attribute_int(xml_file, "y", image->img.animation->sprite_offset_y);
+    add_attribute_bool(xml_file, "reversible", image->img.animation->can_reverse, "true");
 
     fprintf(xml_file, "%s>%s", image->has_frame_elements ? "" : "/", FORMAT_NEWLINE);
 }
@@ -237,20 +237,20 @@ static void populate_asset_rects(image_packer *packer)
         int width, height;
         asset->rect = &packer->rects[asset->id];
         if (!png_get_image_size(asset->path, &width, &height)) {
-            return;
+            continue;
         }
         if (!width || !height) {
-            return;
+            continue;
         }
         asset->pixels = malloc(sizeof(color_t) * width * height);
         if (!asset->pixels) {
             log_error("Out of memory.", 0, 0);
-            return;
+            continue;
         }
         if (!png_read(asset->path, asset->pixels, 0, 0, width, height, 0, 0, width, 0)) {
             free(asset->pixels);
             asset->pixels = 0;
-            return;
+            continue;
         }
         asset->rect->input.width = width;
         asset->rect->input.height = height;
@@ -301,7 +301,6 @@ static void save_final_image(const char *path, unsigned int width, unsigned int 
         return;
     }
     png_set_compression_level(png_ptr, 3);
-    unsigned int row_size = width * BYTES_PER_PIXEL;
 
     FILE *fp = fopen(path, "wb");
     if (!fp) {
@@ -462,10 +461,10 @@ static void pack_group(int group_id)
             pack_layer(&packer, l);
             create_layer_xml_line(xml_dest, l);
         }
-        if (image->img.animation.num_sprites) {
+        if (image->img.animation) {
             create_animation_xml_line(xml_dest, image);
             if (image->has_frame_elements) {
-                for (int i = 0; i < image->img.animation.num_sprites; i++) {
+                for (int i = 0; i < image->img.animation->num_sprites; i++) {
                     image_id++;
                     asset_image *frame = asset_image_get_from_id(image_id);
                     layer *l = frame->last_layer;
@@ -616,9 +615,13 @@ int main(int argc, char **argv)
         return 3;
     }
 
+    xml_init();
+
     for (int i = 0; i < xml_files->num_files; ++i) {
         xml_process_assetlist_file(xml_files->files[i]);
     }
+
+    xml_finish();
 
     log_info("Preparing to pack...", 0, 0);
 

@@ -170,9 +170,9 @@ static void prepare_advisor_image_ids(void)
     for (int i = 0; i < ADVISOR_MAX; i++) {
         if (i == (ADVISOR_HOUSING - 1)) {
             reduce = 1;
-            advisor_image_ids[0][ADVISOR_HOUSING - 1] = assets_get_image_id("UI_Elements",
+            advisor_image_ids[0][ADVISOR_HOUSING - 1] = assets_get_image_id("UI",
                 "Housing Advisor Button");
-            advisor_image_ids[1][ADVISOR_HOUSING - 1] = assets_get_image_id("UI_Elements",
+            advisor_image_ids[1][ADVISOR_HOUSING - 1] = assets_get_image_id("UI",
                 "Housing Advisor Button Selected");
         } else {
             advisor_image_ids[0][i] = image_group(GROUP_ADVISOR_ICONS) + i - reduce;
@@ -324,7 +324,7 @@ void window_advisors_show_checked(void)
         window_advisors_set_advisor(setting_last_advisor());
         window_advisors_show();
     } else {
-        city_warning_show(avail == NOT_AVAILABLE ? WARNING_NOT_AVAILABLE : WARNING_NOT_AVAILABLE_YET);
+        city_warning_show(avail == NOT_AVAILABLE ? WARNING_NOT_AVAILABLE : WARNING_NOT_AVAILABLE_YET, NEW_WARNING_SLOT);
     }
 }
 
@@ -332,7 +332,7 @@ int window_advisors_show_advisor(advisor_type advisor)
 {
     tutorial_availability avail = tutorial_advisor_empire_availability();
     if (avail == NOT_AVAILABLE || avail == NOT_AVAILABLE_YET) {
-        city_warning_show(avail == NOT_AVAILABLE ? WARNING_NOT_AVAILABLE : WARNING_NOT_AVAILABLE_YET);
+        city_warning_show(avail == NOT_AVAILABLE ? WARNING_NOT_AVAILABLE : WARNING_NOT_AVAILABLE_YET, NEW_WARNING_SLOT);
         return 0;
     }
     window_advisors_set_advisor(advisor);

@@ -62,7 +62,7 @@ static arrow_button arrow_buttons_speed[] = {
 };
 
 static image_button play_paused_button = {
-    115, 30, 24, 24, IB_NORMAL, 0, 0, button_toggle_play_paused, button_none, 0, 0, 1, "UI_Elements", "Pause Button"
+    108, 29, 39, 26, IB_NORMAL, 0, 0, button_toggle_play_paused, button_none, 0, 0, 1, "UI", "Pause Button"
 };
 
 static generic_button buttons_emperor_requests[] = {
@@ -115,6 +115,7 @@ static struct {
     int next_invasion;
     int visible_requests;
     int active_requests;
+    int objectives_y_offset;
     int request_buttons_y_offset;
     int focused_request_button_id;
     int selected_request_id;
@@ -255,7 +256,7 @@ static void set_extra_info_objectives(void)
 static int count_happy_gods(void)
 {
     int happy_gods = 0;
-    for (int god = 0; god < 5; god++) {
+    for (int god = 0; god < MAX_GODS; god++) {
         if (city_god_happy_bolts(god) > 0) {
             happy_gods++;
         }
@@ -422,7 +423,7 @@ static int draw_request_buttons(int y_offset)
         buttons_emperor_requests[i].height = 20;
         int width = data.x_offset + 10;
         if (r->resource == RESOURCE_TROOPS) {
-            int image_id = image_group(GROUP_RESOURCE_ICONS) + RESOURCE_WEAPONS;
+            int image_id = resource_get_data(RESOURCE_WEAPONS)->image.icon;
             const image *img = image_get(image_id);
             int image_y_offset = (EXTRA_INFO_LINE_SPACE - img->height) / 2;
 
@@ -439,9 +440,7 @@ static int draw_request_buttons(int y_offset)
             text_draw_centered(translation_for(TR_SIDEBAR_EXTRA_REQUESTS_SEND),
                 data.x_offset + 2, y_offset + 25, 158, FONT_NORMAL_GREEN, 0);
         } else {
-            int resource_offset = r->resource + resource_image_offset(r->resource, RESOURCE_IMAGE_ICON);
-
-            int image_id = image_group(GROUP_RESOURCE_ICONS) + resource_offset;
+            int image_id = resource_get_data(r->resource)->image.icon;
             const image *img = image_get(image_id);
             int image_y_offset = (EXTRA_INFO_LINE_SPACE - img->height) / 2;
 
@@ -464,7 +463,7 @@ static int draw_request_buttons(int y_offset)
                 if (status) {
                     if (status == CITY_REQUEST_STATUS_NOT_ENOUGH_RESOURCES) {
                         if (is_stockpiled) {
-                            image_draw(assets_get_image_id("UI_Elements", "Store Icon"),
+                            image_draw(assets_get_image_id("UI", "Store Icon"),
                                 data.x_offset + 5, y_offset + 10, COLOR_MASK_NONE, SCALE_NONE);
                             text_draw_centered(translation_for(TR_SIDEBAR_EXTRA_REQUESTS_UNSTOCK),
                                 data.x_offset + 2, y_offset + 25, 158, FONT_NORMAL_GREEN, 0);
@@ -568,7 +567,7 @@ static void draw_extra_info_panel(void)
 
         static int happy_image_id;
         if (!happy_image_id) {
-            happy_image_id = assets_get_image_id("UI_Elements", "Happy God Icon");
+            happy_image_id = assets_get_image_id("UI", "Happy God Icon");
         }
         width = text_draw_number(data.gods.happy, 0, "", data.x_offset + 82, y_offset + 2, FONT_NORMAL_GREEN, 0);
         image_draw(happy_image_id, data.x_offset + 82 + width, y_offset - 2, COLOR_MASK_NONE, SCALE_NONE);
@@ -578,6 +577,8 @@ static void draw_extra_info_panel(void)
 
     if (data.info_to_display & SIDEBAR_EXTRA_DISPLAY_RATINGS) {
         y_offset += EXTRA_INFO_LINE_SPACE;
+
+        data.objectives_y_offset = y_offset;
 
         y_offset += draw_extra_info_objective(data.x_offset, y_offset, 53, 1, &data.objectives.culture, 0);
         y_offset += draw_extra_info_objective(data.x_offset, y_offset, 53, 2, &data.objectives.prosperity, 0);
@@ -659,6 +660,56 @@ int sidebar_extra_handle_mouse(const mouse *m)
         return 1;
     }
     return 0;
+}
+
+int sidebar_extra_get_tooltip(tooltip_context *c)
+{
+    if (!sidebar_extra_is_information_displayed(SIDEBAR_EXTRA_DISPLAY_RATINGS)) {
+        return 0;
+    }
+    const mouse *m = mouse_get();
+    if (m->x < data.x_offset + 2 || m->x >= data.x_offset + data.width - 2 ||  m->y < data.objectives_y_offset ||
+        m->y >= data.objectives_y_offset + EXTRA_INFO_LINE_SPACE * 8) {
+        return 0;
+    }
+    int text_id = 0;
+    selected_rating rating = (m->y - data.objectives_y_offset) / (EXTRA_INFO_LINE_SPACE * 2) + 1;
+    switch (rating) {
+        case SELECTED_RATING_CULTURE:
+            if (data.objectives.culture.value <= 90) {
+                text_id = 9 + city_rating_explanation_for(SELECTED_RATING_CULTURE);
+            } else {
+                text_id = 50;
+            }
+            break;
+        case SELECTED_RATING_PROSPERITY:
+        {
+            if (data.objectives.prosperity.value <= 90) {
+                text_id = 16 + city_rating_explanation_for(SELECTED_RATING_PROSPERITY);
+            } else {
+                text_id = 51;
+            }
+            break;
+        }
+        case SELECTED_RATING_PEACE:
+            if (data.objectives.peace.value <= 90) {
+                text_id = 41 + city_rating_explanation_for(SELECTED_RATING_PEACE);
+            } else {
+                text_id = 52;
+            }
+            break;
+        case SELECTED_RATING_FAVOR:
+            if (data.objectives.favor.value <= 90) {
+                text_id = 27 + city_rating_explanation_for(SELECTED_RATING_FAVOR);
+            } else {
+                text_id = 53;
+            }
+            break;
+        default:
+            return 0;
+    }
+    c->text_group = 53;
+    return text_id;
 }
 
 static void button_game_speed(int is_down, int param2)
@@ -747,7 +798,7 @@ static void button_handle_request(int index, int param2)
     }
 }
 
-sidebar_extra_display sidebar_extra_information_displayed(void)
+int sidebar_extra_is_information_displayed(sidebar_extra_display display)
 {
-    return data.info_to_display;
+    return (data.info_to_display & display) != 0;
 }

@@ -11,6 +11,8 @@
 #include "empire/city.h"
 #include "empire/object.h"
 #include "empire/trade_route.h"
+#include "game/save_version.h"
+#include "scenario/empire.h"
 
 #include <string.h>
 
@@ -33,6 +35,11 @@ static struct {
 
 void empire_load(int is_custom_scenario, int empire_id)
 {
+    // empire has already been loaded from the scenario or save file at this point
+    if (empire_id == SCENARIO_CUSTOM_EMPIRE) {
+        return;
+    }
+
     char raw_data[EMPIRE_DATA_SIZE];
     const char *filename = is_custom_scenario ? "c32.emp" : "c3.emp";
 
@@ -54,7 +61,7 @@ void empire_load(int is_custom_scenario, int empire_id)
         memset(raw_data, 0, EMPIRE_DATA_SIZE);
     }
     buffer_init(&buf, raw_data, EMPIRE_DATA_SIZE);
-    empire_object_load(&buf);
+    empire_object_load(&buf, SCENARIO_LAST_UNVERSIONED);
 }
 
 static void check_scroll_boundaries(void)
@@ -66,11 +73,8 @@ static void check_scroll_boundaries(void)
     data.scroll_y = calc_bound(data.scroll_y, 0, max_y);
 }
 
-void empire_load_editor(int empire_id, int viewport_width, int viewport_height)
+void empire_center_on_our_city(int viewport_width, int viewport_height)
 {
-    empire_load(1, empire_id);
-    empire_object_init_cities();
-
     const empire_object *our_city = empire_object_get_our_city();
 
     data.viewport_width = viewport_width;
@@ -85,6 +89,13 @@ void empire_load_editor(int empire_id, int viewport_width, int viewport_height)
     check_scroll_boundaries();
 }
 
+void empire_load_editor(int empire_id, int viewport_width, int viewport_height)
+{
+    empire_load(1, empire_id);
+    empire_object_init_cities(empire_id);
+    empire_center_on_our_city(viewport_width, viewport_height);
+}
+
 void empire_init_scenario(void)
 {
     data.scroll_x = data.initial_scroll_x;
@@ -92,7 +103,7 @@ void empire_init_scenario(void)
     data.viewport_width = EMPIRE_WIDTH;
     data.viewport_height = EMPIRE_HEIGHT;
 
-    empire_object_init_cities();
+    empire_object_init_cities(scenario_empire_id());
 }
 
 void empire_set_viewport(int width, int height)
@@ -142,7 +153,7 @@ int empire_can_export_resource_to_city(int city_id, int resource)
     }
     int in_stock = city_resource_count(resource);
     if (resource_is_food(resource) && config_get(CONFIG_GP_CH_ALLOW_EXPORTING_FROM_GRANARIES)) {
-        in_stock += city_resource_count_food_on_granaries(resource) / RESOURCE_GRANARY_ONE_LOAD;
+        in_stock += city_resource_count_food_on_granaries(resource) / RESOURCE_ONE_LOAD;
     }
 
     if (in_stock <= city_resource_export_over(resource)) {
@@ -185,7 +196,7 @@ int empire_can_import_resource_from_city(int city_id, int resource)
 
     int in_stock = city_resource_count(resource);
     if (resource_is_food(resource)) {
-        in_stock += city_resource_count_food_on_granaries(resource) / RESOURCE_GRANARY_ONE_LOAD;
+        in_stock += city_resource_count_food_on_granaries(resource) / RESOURCE_ONE_LOAD;
     }
     int max_in_stock = 0;
     /* NOTE: don't forget to uncomment function get_max_stock_for_population

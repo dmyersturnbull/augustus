@@ -144,9 +144,7 @@ static void init(int text_id, void (*background_callback)(void))
 
 static int resource_image(int resource)
 {
-    int image_id = image_group(GROUP_RESOURCE_ICONS) + resource;
-    image_id += resource_image_offset(resource, RESOURCE_IMAGE_ICON);
-    return image_id;
+    return resource_get_data(resource)->image.icon;
 }
 
 static int is_event_message(const lang_message *msg)
@@ -218,8 +216,9 @@ static void draw_city_message_text(const lang_message *msg)
         case MESSAGE_TYPE_TRADE_CHANGE:
             image_draw(resource_image(player_message.param2), data.x + 64, data.y_text + 40,
                 COLOR_MASK_NONE, SCALE_NONE);
-            lang_text_draw(21, empire_city_get(player_message.param1)->name_id,
-                data.x + 100, data.y_text + 44, FONT_NORMAL_WHITE);
+            empire_city *city = empire_city_get(player_message.param1);
+            const uint8_t *city_name = empire_city_get_name(city);
+            text_draw(city_name, data.x + 100, data.y_text + 44, FONT_NORMAL_WHITE, 0);
             rich_text_draw(msg->content.text,
                 data.x_text + 8, data.y_text + 86, BLOCK_SIZE * (data.text_width_blocks - 1),
                 data.text_height_blocks - 1, 0);
@@ -245,8 +244,8 @@ static void draw_city_message_text(const lang_message *msg)
                     text_draw_number(request->amount, '@', " ", data.x_text + 8, y_offset, FONT_NORMAL_WHITE, 0);
                     image_draw(resource_image(request->resource), data.x_text + 70, y_offset - 5,
                         COLOR_MASK_NONE, SCALE_NONE);
-                    lang_text_draw(23, request->resource,
-                        data.x_text + 100, y_offset, FONT_NORMAL_WHITE);
+                    text_draw(resource_get_data(request->resource)->text,
+                        data.x_text + 100, y_offset, FONT_NORMAL_WHITE, COLOR_MASK_NONE);
                     if (request->state == REQUEST_STATE_NORMAL || request->state == REQUEST_STATE_OVERDUE) {
                         int width = lang_text_draw_amount(8, 4, request->months_to_comply,
                             data.x_text + 200, y_offset, FONT_NORMAL_WHITE);
@@ -423,11 +422,9 @@ static void draw_background_video(void)
         }
         const scenario_request *request = scenario_request_get(player_message.param1);
         text_draw_number(request->amount, '@', " ", data.x + 8, y_text, FONT_NORMAL_WHITE, 0);
-        image_draw(
-            image_group(GROUP_RESOURCE_ICONS) + request->resource
-            + resource_image_offset(request->resource, RESOURCE_IMAGE_ICON),
+        image_draw(resource_get_data(request->resource)->image.icon,
             data.x + 70, y_text - 5, COLOR_MASK_NONE, SCALE_NONE);
-        lang_text_draw(23, request->resource, data.x + 100, y_text, FONT_NORMAL_WHITE);
+        text_draw(resource_get_data(request->resource)->text, data.x + 100, y_text, FONT_NORMAL_WHITE, COLOR_MASK_NONE);
         if (request->state == REQUEST_STATE_NORMAL || request->state == REQUEST_STATE_OVERDUE) {
             width = lang_text_draw_amount(8, 4, request->months_to_comply, data.x + 200, y_text, FONT_NORMAL_WHITE);
             lang_text_draw(12, 2, data.x + 200 + width, y_text, FONT_NORMAL_WHITE);
@@ -544,6 +541,9 @@ static int handle_input_video(const mouse *m_dialog, const lang_message *msg)
 
 static int handle_input_normal(const mouse *m_dialog, const lang_message *msg)
 {
+    if (rich_text_handle_mouse(m_dialog)) {
+        return 1;
+    }
     if (msg->type == TYPE_MANUAL && image_buttons_handle_mouse(
         m_dialog, data.x + 16, data.y + BLOCK_SIZE * msg->height_blocks - 36, &image_button_back, 1, 0)) {
         return 1;
@@ -567,7 +567,6 @@ static int handle_input_normal(const mouse *m_dialog, const lang_message *msg)
         &image_button_close, 1, 0)) {
         return 1;
     }
-    rich_text_handle_mouse(m_dialog);
     int text_id = rich_text_get_clicked_link(m_dialog);
     if (text_id >= 0) {
         if (data.num_history < MAX_HISTORY - 1) {

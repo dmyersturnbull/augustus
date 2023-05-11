@@ -1,5 +1,6 @@
 #include "terrain.h"
 
+#include "city/map.h"
 #include "core/image.h"
 #include "map/grid.h"
 #include "map/ring.h"
@@ -21,6 +22,18 @@ int map_terrain_is_superset(int grid_offset, int terrain_sum)
 int map_terrain_get(int grid_offset)
 {
     return terrain_grid.items[grid_offset];
+}
+
+int map_terrain_get_from_buffer_16(buffer *buf, int grid_offset)
+{
+    buffer_set(buf, grid_offset * sizeof(uint16_t));
+    return buffer_read_u16(buf);
+}
+
+int map_terrain_get_from_buffer_32(buffer *buf, int grid_offset)
+{
+    buffer_set(buf, grid_offset * sizeof(uint32_t));
+    return buffer_read_u32(buf);
 }
 
 void map_terrain_set(int grid_offset, int terrain)
@@ -167,6 +180,25 @@ int map_terrain_exists_tile_in_radius_with_type(int x, int y, int size, int radi
     return 0;
 }
 
+int map_terrain_exists_rock_in_radius(int x, int y, int size, int radius)
+{
+    int x_min, y_min, x_max, y_max;
+    map_grid_get_area(x, y, size, radius, &x_min, &y_min, &x_max, &y_max);
+
+    for (int yy = y_min; yy <= y_max; yy++) {
+        for (int xx = x_min; xx <= x_max; xx++) {
+            int offset = map_grid_offset(xx, yy);
+            if (offset == city_map_entry_flag()->grid_offset || offset == city_map_exit_flag()->grid_offset) {
+                continue;
+            }
+            if (map_terrain_is(offset, TERRAIN_ROCK)) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 int map_terrain_exists_clear_tile_in_radius(int x, int y, int size, int radius, int except_grid_offset,
     int *x_tile, int *y_tile)
 {
@@ -285,7 +317,14 @@ int map_terrain_get_adjacent_road_or_clear_land(int x, int y, int size, int *x_t
     return 0;
 }
 
-static void add_road(int grid_offset)
+static void add_road_if_no_highway(int grid_offset)
+{
+    if (!map_terrain_is(grid_offset, TERRAIN_HIGHWAY)) {
+        map_terrain_add(grid_offset, TERRAIN_ROAD);
+    }
+}
+
+static void add_road_if_clear(int grid_offset)
 {
     if (!map_terrain_is(grid_offset, TERRAIN_NOT_CLEAR)) {
         map_terrain_add(grid_offset, TERRAIN_ROAD);
@@ -301,22 +340,22 @@ void map_terrain_add_roadblock_road(int x, int y)
 void map_terrain_add_gatehouse_roads(int x, int y, int orientation)
 {
     // roads under gatehouse
-    map_terrain_add(map_grid_offset(x, y), TERRAIN_ROAD);
-    map_terrain_add(map_grid_offset(x + 1, y), TERRAIN_ROAD);
-    map_terrain_add(map_grid_offset(x, y + 1), TERRAIN_ROAD);
-    map_terrain_add(map_grid_offset(x + 1, y + 1), TERRAIN_ROAD);
+    add_road_if_no_highway(map_grid_offset(x, y));
+    add_road_if_no_highway(map_grid_offset(x + 1, y));
+    add_road_if_no_highway(map_grid_offset(x, y + 1));
+    add_road_if_no_highway(map_grid_offset(x + 1, y + 1));
 
     // free roads before/after gate
     if (orientation == 1) {
-        add_road(map_grid_offset(x, y - 1));
-        add_road(map_grid_offset(x + 1, y - 1));
-        add_road(map_grid_offset(x, y + 2));
-        add_road(map_grid_offset(x + 1, y + 2));
+        add_road_if_clear(map_grid_offset(x, y - 1));
+        add_road_if_clear(map_grid_offset(x + 1, y - 1));
+        add_road_if_clear(map_grid_offset(x, y + 2));
+        add_road_if_clear(map_grid_offset(x + 1, y + 2));
     } else if (orientation == 2) {
-        add_road(map_grid_offset(x - 1, y));
-        add_road(map_grid_offset(x - 1, y + 1));
-        add_road(map_grid_offset(x + 2, y));
-        add_road(map_grid_offset(x + 2, y + 1));
+        add_road_if_clear(map_grid_offset(x - 1, y));
+        add_road_if_clear(map_grid_offset(x - 1, y + 1));
+        add_road_if_clear(map_grid_offset(x + 2, y));
+        add_road_if_clear(map_grid_offset(x + 2, y + 1));
     }
 }
 
@@ -374,7 +413,7 @@ void map_terrain_init_outside_map(void)
         int y_outside_map = y < y_start || y >= y_start + map_height;
         for (int x = 0; x < GRID_SIZE; x++) {
             if (y_outside_map || x < x_start || x >= x_start + map_width) {
-                terrain_grid.items[x + GRID_SIZE * y] = TERRAIN_TREE | TERRAIN_WATER;
+                terrain_grid.items[x + GRID_SIZE * y] = TERRAIN_MAP_EDGE;
             }
         }
     }

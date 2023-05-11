@@ -25,7 +25,6 @@ static struct {
     int sidebar_collapsed;
     int orientation;
     int scale;
-    int max_scale;
     struct {
         view_tile tile;
         pixel_offset pixel;
@@ -48,23 +47,48 @@ static int view_to_grid_offset_lookup[VIEW_X_MAX][VIEW_Y_MAX];
 
 static void check_camera_boundaries(void)
 {
+    int max_scale = city_view_get_max_scale();
+    if (max_scale < data.scale) {
+        city_view_set_scale(max_scale);
+        return;
+    }
+    int grid_height = map_grid_height() * 2;
     int x_min = (VIEW_X_MAX - map_grid_width()) / 2;
-    int y_min = (VIEW_Y_MAX - 2 * map_grid_height()) / 2;
-    if (data.camera.tile.x < x_min - 1) {
-        data.camera.tile.x = x_min - 1;
-        data.camera.pixel.x = 0;
+    int y_min = (VIEW_Y_MAX - grid_height) / 2;
+    if (data.viewport.width_tiles >= map_grid_width() + 4) {
+        data.camera.tile.x = x_min - 1 - (data.viewport.width_tiles - map_grid_width()) / 2;
+        data.camera.pixel.x = TILE_WIDTH_PIXELS -
+            ((calc_adjust_with_percentage(data.viewport.width_pixels + 2, data.scale) / 2) % TILE_WIDTH_PIXELS);
+    } else {
+        if (data.camera.tile.x < x_min - 1) {
+            data.camera.tile.x = x_min - 1;
+            data.camera.pixel.x = 0;
+        }
+        int max_x_tile = VIEW_X_MAX - x_min - data.viewport.width_tiles;
+        int max_x_pixel = TILE_WIDTH_PIXELS -
+            (calc_adjust_with_percentage(data.viewport.width_pixels + 2, data.scale) % TILE_WIDTH_PIXELS);
+        if (data.camera.tile.x > max_x_tile || (data.camera.tile.x == max_x_tile && data.camera.pixel.x > max_x_pixel)) {
+            data.camera.tile.x = max_x_tile;
+            data.camera.pixel.x = max_x_pixel;
+        }
     }
-    if (data.camera.tile.x >= VIEW_X_MAX - x_min - data.viewport.width_tiles) {
-        data.camera.tile.x = VIEW_X_MAX - x_min - data.viewport.width_tiles;
-        data.camera.pixel.x = 0;
-    }
-    if (data.camera.tile.y < y_min - 2) {
-        data.camera.tile.y = y_min - 1;
-        data.camera.pixel.y = 0;
-    }
-    if (data.camera.tile.y >= ((VIEW_Y_MAX - y_min - data.viewport.height_tiles) & ~1)) {
-        data.camera.tile.y = VIEW_Y_MAX - y_min - data.viewport.height_tiles;
-        data.camera.pixel.y = 0;
+    if (data.viewport.height_tiles >= grid_height + 4) {
+        data.camera.tile.y = (y_min - (data.viewport.height_tiles - grid_height) / 2) & ~1;
+        data.camera.pixel.y = TILE_HEIGHT_PIXELS -
+            (((calc_adjust_with_percentage(data.viewport.height_pixels, data.scale) + TILE_HEIGHT_PIXELS) / 2) %
+            TILE_HEIGHT_PIXELS);
+    } else {    
+        if (data.camera.tile.y < y_min - 2) {
+            data.camera.tile.y = y_min - 1;
+            data.camera.pixel.y = 0;
+        }
+        int max_y_tile = (VIEW_Y_MAX - y_min - data.viewport.height_tiles) & ~1;
+        int max_y_pixel = TILE_HEIGHT_PIXELS -
+                (calc_adjust_with_percentage(data.viewport.height_pixels, data.scale) % TILE_HEIGHT_PIXELS);
+        if (data.camera.tile.y > max_y_tile || (data.camera.tile.y == max_y_tile && data.camera.pixel.y > max_y_pixel)) {
+            data.camera.tile.y = max_y_tile;
+            data.camera.pixel.y = max_y_pixel;
+        }
     }
     data.camera.tile.y &= ~1;
 }
@@ -141,6 +165,36 @@ static void calculate_lookup(void)
     }
 }
 
+void city_view_set_custom_lookup(int start_offset, int width, int height, int border_size)
+{
+    reset_lookup();
+
+    int start_x = border_size / 2;
+    int end_x = GRID_SIZE - start_x;
+    int start_y = (start_offset - start_x) / GRID_SIZE;
+    int end_y = start_y + height;
+
+    int x_view_start = VIEW_X_MAX - 1 - start_y;
+    int y_view_start = 1 + start_y;
+
+    for (int y = start_y; y < end_y; y++) {
+        int x_view = x_view_start + start_x;
+        int y_view = y_view_start + start_x;
+        for (int x = start_x; x < end_x; x++) {
+            view_to_grid_offset_lookup[x_view / 2][y_view] = x + GRID_SIZE * y;
+            x_view++;
+            y_view++;
+        }
+        x_view_start--;
+        y_view_start++;
+    }
+}
+
+void city_view_restore_lookup(void)
+{
+    calculate_lookup();
+}
+
 static void adjust_camera_position_for_pixels(void)
 {
     while (data.camera.pixel.x < 0) {
@@ -186,7 +240,14 @@ int city_view_get_scale(void)
 
 int city_view_get_max_scale(void)
 {
-    return 600; // data.max_scale;
+    int max_x_pixels = (map_grid_width() + 4) * TILE_WIDTH_PIXELS;
+    int max_y_pixels = (map_grid_height() * 2 + 4) * HALF_TILE_HEIGHT_PIXELS;
+
+    int max_x_scale = calc_percentage(max_x_pixels, data.viewport.width_pixels);
+    int max_y_scale = calc_percentage(max_y_pixels, data.viewport.height_pixels);
+    int max_scale = max_x_scale > max_y_scale ? max_x_scale : max_y_scale;
+
+    return max_scale < 100 ? 100 : max_scale;
 }
 
 void city_view_get_camera(int *x, int *y)
@@ -388,7 +449,7 @@ static void set_viewport_without_sidebar(void)
 
 void city_view_set_scale(int scale)
 {
-    scale = calc_bound(scale, 50, 600);
+    scale = calc_bound(scale, 50, city_view_get_max_scale());
     data.scale = scale;
     if (data.sidebar_collapsed) {
         set_viewport_without_sidebar();
@@ -396,15 +457,7 @@ void city_view_set_scale(int scale)
         set_viewport_with_sidebar();
     }
     check_camera_boundaries();
-    graphics_renderer()->update_scale_mode(scale);
-}
-
-void city_view_set_max_scale(int scale)
-{
-    data.max_scale = 600;
-    if (data.scale > scale) {
-        city_view_set_scale(scale);
-    }
+    graphics_renderer()->update_scale(scale);
 }
 
 void city_view_set_viewport(int screen_width, int screen_height)
@@ -436,12 +489,6 @@ void city_view_get_viewport_size_tiles(int *width, int *height)
 int city_view_is_sidebar_collapsed(void)
 {
     return data.sidebar_collapsed;
-}
-
-int city_view_should_show_grid(void)
-{
-    return config_get(CONFIG_UI_SHOW_GRID_DURING_CONSTRUCTION) &&
-        (editor_is_active() || building_construction_type() != BUILDING_NONE);
 }
 
 void city_view_start_sidebar_toggle(void)
@@ -495,7 +542,7 @@ void city_view_load_scenario_state(buffer *camera)
     data.camera.tile.y = buffer_read_i32(camera);
 }
 
-void city_view_foreach_map_tile(map_callback *callback)
+void city_view_foreach_valid_map_tile(map_callback *callback)
 {
     int odd = 0;
     int y_view = data.camera.tile.y - 8;
@@ -512,7 +559,9 @@ void city_view_foreach_map_tile(map_callback *callback)
             for (int x = 0; x < data.viewport.width_tiles + 9; x++) {
                 if (x_view >= 0 && x_view < VIEW_X_MAX) {
                     int grid_offset = view_to_grid_offset_lookup[x_view][y_view];
-                    callback(x_graphic, y_graphic, grid_offset);
+                    if (grid_offset >= 0) {
+                        callback(x_graphic, y_graphic, grid_offset);
+                    }
                 }
                 x_graphic += TILE_WIDTH_PIXELS;
                 x_view++;
@@ -524,7 +573,7 @@ void city_view_foreach_map_tile(map_callback *callback)
     }
 }
 
-void city_view_foreach_valid_map_tile(map_callback *callback1, map_callback *callback2, map_callback *callback3)
+void city_view_foreach_valid_map_tile_row(map_callback *callback1, map_callback *callback2, map_callback *callback3)
 {
     int odd = 0;
     int y_view = data.camera.tile.y - 8;

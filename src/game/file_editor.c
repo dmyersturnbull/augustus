@@ -39,12 +39,14 @@
 #include "map/sprite.h"
 #include "map/terrain.h"
 #include "map/tiles.h"
+#include "scenario/custom_messages.h"
 #include "scenario/distant_battle.h"
 #include "scenario/editor.h"
 #include "scenario/empire.h"
 #include "scenario/invasion.h"
 #include "scenario/map.h"
 #include "scenario/property.h"
+#include "scenario/scenario_events_controller.h"
 #include "sound/city.h"
 #include "sound/music.h"
 
@@ -69,6 +71,8 @@ void game_file_editor_clear_data(void)
     traders_clear();
     game_time_init(2098);
     scenario_invasion_clear();
+    scenario_events_clear();
+    custom_messages_clear_all();
 }
 
 static void clear_map_data(void)
@@ -98,16 +102,18 @@ static void create_blank_map(int size)
     scenario_map_init();
     clear_map_data();
     map_image_init_edges();
+    city_view_set_scale(100);
     city_view_set_camera(76, 152);
     city_view_reset_orientation();
 }
 
 static void prepare_map_for_editing(void)
 {
-    image_load_climate(scenario_property_climate(), 1, 0);
+    image_load_climate(scenario_property_climate(), 1, 0, 0);
 
-    empire_load(1, scenario_empire_id());
-    empire_object_init_cities();
+    int empire_id = scenario_empire_id();
+    empire_load(1, empire_id);
+    empire_object_init_cities(empire_id);
 
     figure_init_scenario();
     figure_create_editor_flags();
@@ -120,6 +126,7 @@ static void prepare_map_for_editing(void)
     map_tiles_update_all_empty_land();
     map_tiles_update_all_meadow();
     map_tiles_update_all_roads();
+    map_tiles_update_all_highways();
     map_tiles_update_all_plazas();
     map_tiles_update_all_walls();
     map_tiles_update_all_aqueducts(0);

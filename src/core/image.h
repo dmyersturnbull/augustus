@@ -6,11 +6,13 @@
 #include "graphics/color.h"
 
 #define IMAGE_MAIN_ENTRIES 10000
+#define IMAGE_MAX_GROUPS 300
 
 #define IMAGE_FONT_MULTIBYTE_OFFSET 10000
 #define IMAGE_FONT_MULTIBYTE_TRAD_CHINESE_MAX_CHARS 2188
 #define IMAGE_FONT_MULTIBYTE_SIMP_CHINESE_MAX_CHARS 2130
 #define IMAGE_FONT_MULTIBYTE_KOREAN_MAX_CHARS 2350
+#define IMAGE_FONT_MULTIBYTE_JAPANESE_MAX_CHARS 3321
 
 #define IMAGE_ATLAS_BIT_OFFSET 28
 #define IMAGE_ATLAS_BIT_MASK 0x0fffffff
@@ -25,23 +27,32 @@
  */
 
 /**
- * Image metadata
+ * Image animation metadata
  */
 typedef struct {
+    int num_sprites;
+    int sprite_offset_x;
+    int sprite_offset_y;
+    int can_reverse;
+    int speed_id;
+    int start_offset;
+} image_animation;
+
+/**
+ * Image metadata
+ */
+typedef struct image {
     int x_offset;
     int y_offset;
     int width;
     int height;
-    int is_isometric;
-    int top_height;
     struct {
-        int num_sprites;
-        int sprite_offset_x;
-        int sprite_offset_y;
-        int can_reverse;
-        int speed_id;
-        int start_offset;
-    } animation;
+        int width;
+        int height;
+    } original;
+    int is_isometric;
+    struct image *top;
+    image_animation *animation;
     struct {
         int id;
         int x_offset;
@@ -50,13 +61,40 @@ typedef struct {
 } image;
 
 /**
+ * Image copy information
+ */
+typedef struct {
+    struct {
+        int x;
+        int y;
+        int width;
+        int height;
+        const color_t *pixels;
+    } src;
+    struct {
+        int x;
+        int y;
+        int width;
+        int height;
+        color_t *pixels;
+    } dst;
+    struct {
+        int x_offset;
+        int y_offset;
+        int width;
+        int height;
+    } rect;
+} image_copy_info;
+
+/**
  * Loads the image collection for the specified climate
  * @param climate_id Climate to load
  * @param is_editor Whether to load the editor graphics or not
  * @param force_reload Whether to force loading graphics even if climate/editor are the same
+ * @param keep_atlas_buffers Whether to keep the atlas buffers in memory after the images are created
  * @return boolean true on success, false on failure
  */
-int image_load_climate(int climate_id, int is_editor, int force_reload);
+int image_load_climate(int climate_id, int is_editor, int force_reload, int keep_atlas_buffers);
 
 /**
  * Loads external fonts file (Cyrillic and Traditional Chinese)
@@ -73,33 +111,41 @@ int image_load_enemy(int enemy_id);
 
 /**
  * Indicates whether an image is external or not
- * @param image_id Image to check
+ * @param img Image to check
  * @return 1 if image is external, 0 otherwise
  */
-int image_is_external(int image_id);
+int image_is_external(const image *img);
 
 /**
  * Loads the pixel data of an external image
  * @param dst The pixel buffer where the image data will be stored
- * @param image_id Image to load
+ * @param img Image to load
  * @param row_width The width of the pixel buffer, in pixels
  * @return 1 if successful, 0 otherwise
  */
-int image_load_external_pixels(color_t *dst, int image_id, int row_width);
+int image_load_external_pixels(color_t *dst, const image *img, int row_width);
 
 /**
  * Loads the external data of an image
- * @param image_id Image to load
+ * @param img Image to load
  */
-void image_load_external_data(int image_id);
+void image_load_external_data(const image *img);
+
+/**
+ * Gets the real width and height of an external image
+ * @param img Image to check
+ * @param width The variable to set the width
+ * @param height The variable to set the height
+ * @return 1 if the dimensions could be set, 0 otherwise
+ */
+int image_get_external_dimensions(const image *img, int *width, int *height);
 
 /**
  * Crops the transparent pixels around an image
  * @param img The image to crop
  * @param pixels The pixel data of the image
- * @param reduce_width Whether to crop the width as well
  */
-void image_crop(image *img, const color_t *pixels, int reduce_width);
+void image_crop(image *img, const color_t *pixels);
 
 /**
  * Gets the image id of the first image in the group
@@ -128,5 +174,17 @@ const image *image_letter(int letter_id);
  * @return Enemy image
  */
 const image *image_get_enemy(int id);
+
+/**
+ * Copies an image
+ * @param copy The copy information
+ */
+void image_copy(const image_copy_info *copy);
+
+/**
+ * Copies an isometric footprint
+ * @param copy The copy information
+ */
+void image_copy_isometric_footprint(const image_copy_info *copy);
 
 #endif // CORE_IMAGE_H

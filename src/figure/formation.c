@@ -14,6 +14,7 @@
 #include "figure/formation_herd.h"
 #include "figure/formation_legion.h"
 #include "figure/properties.h"
+#include "game/save_version.h"
 #include "map/grid.h"
 #include "sound/effect.h"
 
@@ -80,6 +81,7 @@ formation *formation_create_legion(int building_id, int x, int y, figure_type ty
     building *fort_ground = building_get(building_get(building_id)->next_part_building_id);
     m->x = m->standard_x = m->x_home = fort_ground->x;
     m->y = m->standard_y = m->y_home = fort_ground->y;
+    m->target_formation_id = 0;
 
     data.num_legions++;
     if (m->id > data.id_last_in_use) {
@@ -112,6 +114,7 @@ static formation *formation_create(int figure_type, int layout, int orientation,
     } else {
         f->layout = layout;
     }
+    f->target_formation_id = 0;
     return f;
 }
 
@@ -328,20 +331,20 @@ void formation_change_morale(formation *m, int amount)
 void formation_update_morale_after_death(formation *m)
 {
     formation_calculate_figures();
-    int pct_dead = calc_percentage(1, m->num_figures);
+    int pct_dead = calc_percentage(1, m->num_figures + 1);
     int morale;
     if (pct_dead < 8) {
-        morale = -5;
+        morale = -4;
     } else if (pct_dead < 10) {
-        morale = -7;
+        morale = -6;
     } else if (pct_dead < 14) {
-        morale = -10;
+        morale = -8;
     } else if (pct_dead < 20) {
-        morale = -12;
+        morale = -10;
     } else if (pct_dead < 30) {
-        morale = -15;
+        morale = -12;
     } else {
-        morale = -20;
+        morale = -16;
     }
     formation_change_morale(m, morale);
 }
@@ -371,7 +374,7 @@ void formation_update_monthly_morale_deployed(void)
         if (f->is_legion) {
             if (!f->is_at_fort && !f->in_distant_battle) {
                 if (f->morale <= 20 && !f->months_low_morale && !f->months_very_low_morale) {
-                    change_all_morale(-10, 10);
+                    change_all_morale(-5, 10);
                 }
                 if (f->morale <= 10) {
                     f->months_very_low_morale++;
@@ -381,7 +384,7 @@ void formation_update_monthly_morale_deployed(void)
             }
         } else { // enemy
             if (f->morale <= 20 && !f->months_low_morale && !f->months_very_low_morale) {
-                change_all_morale(10, -10);
+                change_all_morale(5, -10);
             }
             if (f->morale <= 10) {
                 f->months_very_low_morale++;
@@ -505,6 +508,11 @@ void formation_set_home(formation *m, int x, int y)
     m->y_home = y;
 }
 
+void formation_retreat(formation *m)
+{
+    m->months_low_morale = 1;
+}
+
 static void clear_figures(void)
 {
     for (int i = 1; i < formations.size; i++) {
@@ -534,7 +542,7 @@ static int add_figure(int formation_id, int figure_id, int deployed, int damage,
             return fig;
         }
     }
-    return 0; // shouldn't happen
+    return 0; // can happen on large invasions
 }
 
 void formation_move_herds_away(int x, int y)
@@ -556,7 +564,7 @@ void formation_calculate_figures(void)
     clear_figures();
     for (int i = 1; i < figure_count(); i++) {
         figure *f = figure_get(i);
-        if (f->state != FIGURE_STATE_ALIVE) {
+        if (figure_is_dead(f)) {
             continue;
         }
         if (!figure_is_legion(f) && !figure_is_enemy(f) && !figure_is_herd(f)) {
@@ -692,6 +700,7 @@ void formations_save_state(buffer *buf, buffer *totals)
 {
     int buf_size = 4 + formations.size * CURRENT_BUFFER_SIZE_PER_FORMATION;
     uint8_t *buf_data = malloc(buf_size);
+    memset(buf_data, 0, buf_size);
     buffer_init(buf, buf_data, buf_size);
     buffer_write_i32(buf, CURRENT_BUFFER_SIZE_PER_FORMATION);
 
@@ -754,7 +763,8 @@ void formations_save_state(buffer *buf, buffer *totals)
         buffer_write_u8(buf, f->invasion_id);
         buffer_write_u8(buf, f->herd_wolf_spawn_delay);
         buffer_write_u8(buf, f->herd_direction);
-        buffer_skip(buf, 17);
+        buffer_write_i32(buf, f->target_formation_id);
+        buffer_skip(buf, 13);
         buffer_write_i16(buf, f->invasion_sequence);
     }
     buffer_write_i32(totals, data.id_last_in_use);
@@ -762,7 +772,7 @@ void formations_save_state(buffer *buf, buffer *totals)
     buffer_write_i32(totals, data.num_legions);
 }
 
-void formations_load_state(buffer *buf, buffer *totals, int includes_buffer_size)
+void formations_load_state(buffer *buf, buffer *totals, int version)
 {
     data.id_last_in_use = buffer_read_i32(totals);
     data.id_last_legion = buffer_read_i32(totals);
@@ -772,7 +782,7 @@ void formations_load_state(buffer *buf, buffer *totals, int includes_buffer_size
     int formation_buf_size = ORIGINAL_BUFFER_SIZE_PER_FORMATION;
     int buf_size = buf->size;
 
-    if (includes_buffer_size) {
+    if (version > SAVE_GAME_LAST_STATIC_VERSION) {
         formation_buf_size = buffer_read_i32(buf);
         buf_size -= 4;
     }
@@ -846,7 +856,8 @@ void formations_load_state(buffer *buf, buffer *totals, int includes_buffer_size
         f->invasion_id = buffer_read_u8(buf);
         f->herd_wolf_spawn_delay = buffer_read_u8(buf);
         f->herd_direction = buffer_read_u8(buf);
-        buffer_skip(buf, 17);
+        f->target_formation_id = buffer_read_i32(buf);
+        buffer_skip(buf, 13);
         f->invasion_sequence = buffer_read_i16(buf);
 
         if (formation_buf_size > CURRENT_BUFFER_SIZE_PER_FORMATION) {
@@ -860,4 +871,12 @@ void formations_load_state(buffer *buf, buffer *totals, int includes_buffer_size
 
     // Reduce number of available formations to improve performance
     formations.size = highest_id_in_use + 1;
+
+    // old saves did not write formations to a zeroed out buffer, so check for invalid target_formation_ids
+    for (int i = 0; i < formations.size; i++) {
+        formation *f = array_item(formations, i);
+        if (f->target_formation_id < 0 || f->target_formation_id >= formations.size) {
+            f->target_formation_id = 0;
+        }
+    }
 }

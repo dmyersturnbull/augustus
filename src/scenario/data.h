@@ -1,7 +1,9 @@
 #ifndef SCENARIO_DATA_H
 #define SCENARIO_DATA_H
 
+#include "core/file.h"
 #include "map/point.h"
+#include "scenario/property.h"
 #include "scenario/types.h"
 
 #include <stdint.h>
@@ -96,6 +98,9 @@ typedef struct {
     int state;
     int visible;
     int months_to_comply;
+    int extension_months_to_comply;
+    int extension_disfavor;
+    int ignored_disfavor;
 } request_t;
 
 typedef struct {
@@ -120,14 +125,36 @@ typedef struct {
     int month;
     int resource;
     int route_id;
-    int is_rise;
+    int amount;
 } demand_change_t;
+
+#define DEMAND_CHANGE_LEGACY_IS_RISE 9999
+#define DEMAND_CHANGE_LEGACY_IS_FALL -9999
+
+typedef struct {
+    struct win_criteria_t population;
+    struct win_criteria_t culture;
+    struct win_criteria_t prosperity;
+    struct win_criteria_t peace;
+    struct win_criteria_t favor;
+    struct {
+        int enabled;
+        int years;
+    } time_limit;
+    struct {
+        int enabled;
+        int years;
+    } survival_time;
+    int milestone25_year;
+    int milestone50_year;
+    int milestone75_year;
+} scenario_win_criteria;
 
 extern struct scenario_t {
     uint8_t scenario_name[MAX_SCENARIO_NAME];
 
     int start_year;
-    int climate;
+    scenario_climate climate;
     int player_rank;
 
     int initial_funds;
@@ -140,25 +167,9 @@ extern struct scenario_t {
     int enemy_id;
     int is_open_play;
     int open_play_scenario_id;
+    int intro_custom_message_id;
 
-    struct {
-        struct win_criteria_t population;
-        struct win_criteria_t culture;
-        struct win_criteria_t prosperity;
-        struct win_criteria_t peace;
-        struct win_criteria_t favor;
-        struct {
-            int enabled;
-            int years;
-        } time_limit;
-        struct {
-            int enabled;
-            int years;
-        } survival_time;
-        int milestone25_year;
-        int milestone50_year;
-        int milestone75_year;
-    } win_criteria;
+    scenario_win_criteria win_criteria;
 
     struct {
         int id;
@@ -166,6 +177,7 @@ extern struct scenario_t {
         int expansion_year;
         int distant_battle_roman_travel_months;
         int distant_battle_enemy_travel_months;
+        char custom_name[FILE_NAME_MAX];
     } empire;
 
     request_t requests[MAX_REQUESTS];
@@ -195,7 +207,9 @@ extern struct scenario_t {
         int sea_trade_problem;
         int land_trade_problem;
         int raise_wages;
+        int max_wages;
         int lower_wages;
+        int min_wages;
         int contaminated_water;
         int iron_mine_collapse;
         int clay_pit_flooded;

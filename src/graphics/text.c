@@ -99,11 +99,54 @@ int text_get_width(const uint8_t *str, font_t font)
         } else {
             int letter_id = font_letter_id(def, str, &num_bytes);
             if (letter_id >= 0) {
-                width += def->letter_spacing + image_letter(letter_id)->width;
+                width += def->letter_spacing + image_letter(letter_id)->original.width;
             }
         }
         str += num_bytes;
         maxlen -= num_bytes;
+    }
+    return width;
+}
+
+int text_get_number_width(int value, char prefix, const char *postfix, font_t font)
+{
+    const font_definition *def = font_definition_for(font);
+
+    int width = 0;
+
+    if (prefix) {
+        uint8_t prefix_str[2] = { prefix, 0 };
+        width += text_get_width(prefix_str, font);
+    }
+
+    uint8_t buffer[NUMBER_BUFFER_LENGTH];
+    int length = string_from_int(buffer, value, 0);
+    uint8_t *str = buffer;
+
+    int separator_pixels = config_get(CONFIG_UI_DIGIT_SEPARATOR) * 3;
+
+    while (length > 0) {
+        int num_bytes = 1;
+
+        if (*str >= ' ') {
+            int letter_id = font_letter_id(def, str, &num_bytes);
+            if (*str == ' ' || *str == '_' || letter_id < 0) {
+                width += def->space_width;
+            } else {
+                const image *img = image_letter(letter_id);
+                width += def->letter_spacing + img->original.width;
+            }
+            if (length == 4 || length == 7) {
+                width += separator_pixels;
+            }
+        }
+
+        str += num_bytes;
+        length -= num_bytes;
+    }
+
+    if (postfix && *postfix) {
+        width += text_get_width(string_from_ascii(postfix), font);
     }
     return width;
 }
@@ -116,7 +159,7 @@ static int get_letter_width(const uint8_t *str, const font_definition *def, int 
     }
     int letter_id = font_letter_id(def, str, num_bytes);
     if (letter_id >= 0) {
-        return def->letter_spacing + image_letter(letter_id)->width;
+        return def->letter_spacing + image_letter(letter_id)->original.width;
     } else {
         return 0;
     }
@@ -179,7 +222,7 @@ void text_ellipsize(uint8_t *str, font_t font, int requested_width)
         } else {
             int letter_id = font_letter_id(def, str, &num_bytes);
             if (letter_id >= 0) {
-                width += def->letter_spacing + image_letter(letter_id)->width;
+                width += def->letter_spacing + image_letter(letter_id)->original.width;
             }
         }
         if (ellipsis_width + width <= requested_width) {
@@ -218,7 +261,7 @@ static int get_word_width(const uint8_t *str, font_t font, int *out_num_chars)
             // normal char
             int letter_id = font_letter_id(def, str, &num_bytes);
             if (letter_id >= 0) {
-                width += image_letter(letter_id)->width + def->letter_spacing;
+                width += image_letter(letter_id)->original.width + def->letter_spacing;
             }
             word_char_seen = 1;
             if (num_bytes > 1) {
@@ -289,7 +332,7 @@ int text_draw_scaled(const uint8_t *str, int x, int y, font_t font, color_t colo
                 const image *img = image_letter(letter_id);
                 int height = def->image_y_offset(*str, img->height + img->y_offset, def->line_height);
                 image_draw_letter(def->font, letter_id, current_x, y - height, color, scale);
-                width = def->letter_spacing + img->width;
+                width = def->letter_spacing + img->original.width;
             }
             if (input_cursor.capture && input_cursor.position == input_cursor.cursor_position) {
                 if (!input_cursor.seen) {
@@ -502,6 +545,13 @@ void text_draw_number_centered_prefix(int value, char prefix, int x_offset, int 
 {
     uint8_t str[NUMBER_BUFFER_LENGTH];
     number_to_string(str, value, prefix, " ");
+    text_draw_centered(str, x_offset, y_offset, box_width, font, 0);
+}
+
+void text_draw_number_centered_postfix(int value, const char *postfix, int x_offset, int y_offset, int box_width, font_t font)
+{
+    uint8_t str[NUMBER_BUFFER_LENGTH];
+    number_to_string(str, value, 0, postfix);
     text_draw_centered(str, x_offset, y_offset, box_width, font, 0);
 }
 
